@@ -1,0 +1,1082 @@
+{
+  "office": {
+    "name": "Watcon International — Head Office",
+    "address": "S-36, Okhla Phase II, Pocket S, Okhla Phase II, Okhla Industrial Estate, New Delhi, Delhi 110020",
+    "pincode": "110020",
+    "lat": 28.5355,
+    "lng": 77.273,
+    "city": "New Delhi",
+    "state": "Delhi"
+  },
+  "sites": [
+    {
+      "sno": 1,
+      "name": "SHEKHAR RESORT - AGRA",
+      "address": "7TH MILESTONE FATEHABAD ROAD AGRA (U.P)- 283111",
+      "pincode": "283111",
+      "lat": 27.1776,
+      "lng": 78.009,
+      "city": "Agra",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 2,
+      "name": "AKHILESH CHOUDHARY",
+      "address": "BALOLA BANDHWARI HARYANA -122102",
+      "pincode": "122102",
+      "lat": 28.3818,
+      "lng": 77.1118,
+      "city": "Haryana",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 3,
+      "name": "ANAND GUPTA",
+      "address": "40 SHIVAJI MARG WESTENED GREEN NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5127,
+      "lng": 77.1327,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 4,
+      "name": "ANIL GUPTA",
+      "address": "6/32 SHANTINIKETAN NEW DELHI -110021",
+      "pincode": "110021",
+      "lat": 28.5836,
+      "lng": 77.1736,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 5,
+      "name": "ANKUR BANSAL",
+      "address": "B 29 CHURCH ROAD GREEN AVENUE VASANT KUNJ NEW DELHI -110070",
+      "pincode": "110070",
+      "lat": 28.5245,
+      "lng": 77.1545,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 6,
+      "name": "ANUJ MUNJAL",
+      "address": "17A WESTEND GREEN RAJOKARI DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5154,
+      "lng": 77.1354,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 7,
+      "name": "ANURAG GUPTA",
+      "address": "D 22 PUSHPANJLI NEW DELHI -110092",
+      "pincode": "110092",
+      "lat": 28.6763,
+      "lng": 77.3163,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 8,
+      "name": "APPOLLO RESIDENCY",
+      "address": "FARM HOUSE NO. 18 , THE GREEN RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5172,
+      "lng": 77.1372,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 9,
+      "name": "BAGMANE - BANGLORE",
+      "address": "NO.497, 14th MAIN, 3rd CROSS KORAMANGLA, BENGALURU KARNATAKA-560034",
+      "pincode": "560034",
+      "lat": 12.9433,
+      "lng": 77.6326,
+      "city": "Bengaluru",
+      "state": "Karnataka",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 10,
+      "name": "BHATIA RESIDENCE",
+      "address": "C -11 VASANT VIHAR NEW DELHI -110057",
+      "pincode": "110057",
+      "lat": 28.557,
+      "lng": 77.16,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 11,
+      "name": "BIRD HOTEL - JEWAR UTTARPRADESH",
+      "address": "NOIDA INTERNATIONAL AIRPORT, JEWAR SIKANDRABAD ROAD, NEAR KUSHOREPUR VILLAGE BALLABH NAGAR GAUTAMBUDHA NAGAR UTTAR PRADESH-203135",
+      "pincode": "203135",
+      "lat": 28.1209,
+      "lng": 77.5509,
+      "city": "Noida",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 12,
+      "name": "BLISVILLE - WHITELAND",
+      "address": "10th FLOOR, TOWER-A, WORLDMARK, SECTOR-65, GURGAON, HARYANA-122001",
+      "pincode": "122001",
+      "lat": 28.4613,
+      "lng": 77.0284,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 13,
+      "name": "CARVANSERAI",
+      "address": "UGF, NIRANKARI COLONY 2/67 NEW DELHI-110009",
+      "pincode": "110009",
+      "lat": 28.7027,
+      "lng": 77.2077,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 14,
+      "name": "DHARMPAL SINGHLA - DPS",
+      "address": "FARM HOUSE NO. 4 , CASURINA AVENAU WESTENED GREEN AT RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5136,
+      "lng": 77.1336,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 15,
+      "name": "DUA RESIDENCE",
+      "address": "A 9/34 VASANT VIHAR NEW DELHI -110057",
+      "pincode": "110057",
+      "lat": 28.5615,
+      "lng": 77.1645,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 16,
+      "name": "ENAYAT VILLA",
+      "address": "E 9/6 VASANT VIHAR NEW DELHI -110057",
+      "pincode": "110057",
+      "lat": 28.5624,
+      "lng": 77.1654,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 17,
+      "name": "GR INFRA PROJECT",
+      "address": "GR ONE PLT NO. 7 B MARUTI INDUSTRIAL COMPLEX SEC.18 GURGAON (HARYANA) -122015",
+      "pincode": "122015",
+      "lat": 28.4963,
+      "lng": 77.0763,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 18,
+      "name": "DREAMSMITH - GOA",
+      "address": "264 OKHLA INDUSTRIAL ESTATE , PHASE -III , NEW DELHI -110020",
+      "pincode": "110020",
+      "lat": 28.5427,
+      "lng": 77.2802,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 19,
+      "name": "SONIA LODGING - GWALIOR",
+      "address": "VILLAGE LAKHNOTI KALA , AGRA -JHANSI BYPAS ROAD GWALIOR (M.P) -475001",
+      "pincode": "475001",
+      "lat": 26.2264,
+      "lng": 78.1909,
+      "city": "Agra",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 20,
+      "name": "HARMAN - FARIDABAD",
+      "address": "PLOT NO.886, SEC.15 AT FARIDABAD (HARYANA)-121007",
+      "pincode": "121007",
+      "lat": 28.41,
+      "lng": 77.31,
+      "city": "Faridabad",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 21,
+      "name": "HOMELAND - MOHALI",
+      "address": "GROUP HOUSING SITE , SEC. 77, AIRPORT ROAD, SAHIBZADA AJIT SINGH NAGAR, MOHALI (PUNJAB ) PIN CODE 160070",
+      "pincode": "160070",
+      "lat": 30.7055,
+      "lng": 76.7188,
+      "city": "Mohali",
+      "state": "Punjab",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 22,
+      "name": "JAQUAR GROUP - SOUTH EX",
+      "address": "D -13 SOUTH EXTENSION PART -2 NEW DELHI -110049",
+      "pincode": "110049",
+      "lat": 28.5718,
+      "lng": 77.2218,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 23,
+      "name": "JK JAIN / RAHUL JAIN",
+      "address": "G 14 PUSHPANJLI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5127,
+      "lng": 77.1327,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 24,
+      "name": "JW MARRIOT HOTEL",
+      "address": "VILLAGE ABHEYPUR SOHNA GURUGRAM (HARYANA) -122102",
+      "pincode": "122102",
+      "lat": 28.3836,
+      "lng": 77.1136,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 25,
+      "name": "BHAIRAVI JANI - KAMDHENU",
+      "address": "C -112, DLF PHASE -1 GURGAON (HARYANA) -122002",
+      "pincode": "122002",
+      "lat": 28.4745,
+      "lng": 77.0945,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 26,
+      "name": "TILAK RAJ SHARMA - KANPUR",
+      "address": "VISHNUPURA NEAR DHARMSHALA VIP ROAD AT KANPUR (U.P) -208002",
+      "pincode": "208002",
+      "lat": 26.4553,
+      "lng": 80.3373,
+      "city": "Kanpur",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 27,
+      "name": "LITTLE KINGDOM - VASANT VIHAR",
+      "address": "SERAI 6-8, KALKA DAS MARG, MEHRAULI, SOUTH WEST DELHI-110030",
+      "pincode": "110030",
+      "lat": 28.5063,
+      "lng": 77.1563,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 28,
+      "name": "KHALID MASOOD RESIDENCE",
+      "address": "SEC.06 GOMTI NAGAR LUCKNOW (U.P) -206010",
+      "pincode": "206010",
+      "lat": 26.8539,
+      "lng": 80.9534,
+      "city": "Lucknow",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 29,
+      "name": "SHALIMAR - BELVEDERE SUITS",
+      "address": "SEC.06 GOMTI NAGAR LUCKNOW (U.P) -206010",
+      "pincode": "206010",
+      "lat": 26.8548,
+      "lng": 80.9543,
+      "city": "Lucknow",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 30,
+      "name": "SHALIMAR - CLUB ONE WORLD",
+      "address": "SEC.06 GOMTI NAGAR LUCKNOW (U.P) -206010",
+      "pincode": "206010",
+      "lat": 26.8467,
+      "lng": 80.9462,
+      "city": "Lucknow",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 31,
+      "name": "SHALIMAR - GALLENT WEST",
+      "address": "TITANIUM BUILDING 11TH FLOOR VIBHUTI KHAND GOMTI NAGAR LUCKNOW-226010",
+      "pincode": "226010",
+      "lat": 26.8476,
+      "lng": 80.9471,
+      "city": "Lucknow",
+      "state": "Uttar Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 32,
+      "name": "MAINI FARM",
+      "address": "13 NORTH DRIVE AT DLF CHATTARPUR NEW DELHI -110074",
+      "pincode": "110074",
+      "lat": 28.4918,
+      "lng": 77.1818,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 33,
+      "name": "MUKUL JAIN - LUDHIANA",
+      "address": "PLOT NO. 95 , JANPATH ATAM VALLABH LUDHIANA PUNJAB -142027",
+      "pincode": "142027",
+      "lat": 30.9037,
+      "lng": 75.86,
+      "city": "Ludhiana",
+      "state": "Punjab",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 34,
+      "name": "NARMATA - JACUZZI  REF MANISHA",
+      "address": "M-18, MAHARANI BAGH NEW DELHI-110065",
+      "pincode": "110065",
+      "lat": 28.5706,
+      "lng": 77.2636,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 35,
+      "name": "NAVJOT SINGH SIDHU",
+      "address": "110 HOLY CITY ATARI BYPASS AT AMRITSAR (PUNJAB) -143001",
+      "pincode": "143001",
+      "lat": 31.6385,
+      "lng": 74.8768,
+      "city": "Amritsar",
+      "state": "Punjab",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 36,
+      "name": "NORTH GATE",
+      "address": "1 F , GRAND WESTEND GREEN RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5154,
+      "lng": 77.1354,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 37,
+      "name": "PACIFIC DEVELOPMENT - JAIPUR",
+      "address": "42, VT ROAD OPP. RYAN INTERNATIONAL SCHOOL WARD NO. 27 MANSAROVAR SEC. 5 JAIPUR (RAJASTHAN) -302020",
+      "pincode": "302020",
+      "lat": 26.9187,
+      "lng": 75.7936,
+      "city": "Jaipur",
+      "state": "Rajasthan",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 38,
+      "name": "PANKAJ AGGARWAL",
+      "address": "B 416 NEW FRIENDS COLONY NEW DELHI -110025",
+      "pincode": "110025",
+      "lat": 28.5722,
+      "lng": 77.2772,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 39,
+      "name": "PRIDHI MINDA",
+      "address": "01 FARUKHNAGAR, SAYYAD , MOHAMMADPUR GURUGRAM (HR.) -12250",
+      "pincode": null,
+      "lat": 28.5436,
+      "lng": 77.2811,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 40,
+      "name": "F-100 SANDEEP AGGARWAL",
+      "address": "F 100 RADHEY MOHAN DRIVE AT CHATTARPUR NEW DELHI -110074",
+      "pincode": "110074",
+      "lat": 28.49,
+      "lng": 77.18,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 41,
+      "name": "PINTOO CHHABRA",
+      "address": "CHHABRA HOUSE NEAR EMPERIOR METRO RIGHT SIDE OF SHISHUKUNJ SCHOOL AT INDORE (M.P) -452016",
+      "pincode": "452016",
+      "lat": 22.7205,
+      "lng": 75.8586,
+      "city": "Indore",
+      "state": "Madhya Pradesh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 42,
+      "name": "RAJDEEP MAN RESIDENCE",
+      "address": "FARM NO. 1269 , SEC.14 FARIDABAD (HARYANA) -121006",
+      "pincode": "121006",
+      "lat": 28.4107,
+      "lng": 77.3196,
+      "city": "Faridabad",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 43,
+      "name": "RAJIV RATTAN",
+      "address": "13, ASM, NEW DELHI -110013",
+      "pincode": "110013",
+      "lat": 28.5932,
+      "lng": 77.2527,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 44,
+      "name": "RAJNEESH AGGARWAL",
+      "address": "21 A RAJ NIWAS CIVIL LINES NEW DELHI",
+      "pincode": null,
+      "lat": 28.5391,
+      "lng": 77.2766,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 45,
+      "name": "RAJNI FARM",
+      "address": "25 KAMLA VILLA , MAULSARI AVENAU WESTENED GREEN NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5145,
+      "lng": 77.1345,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 46,
+      "name": "RAKENDER WATERBODY",
+      "address": "GREEN CITY COLONY BHATINDA PUNJAB-151004",
+      "pincode": "151004",
+      "lat": 30.2164,
+      "lng": 74.9509,
+      "city": "Bathinda",
+      "state": "Punjab",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 47,
+      "name": "RAMAN MITTAL",
+      "address": "F-18 GREEN AVENAU LANE KISHANGARH VASANT KUNJ, NEW DELHI - 110070",
+      "pincode": "110070",
+      "lat": 28.5263,
+      "lng": 77.1563,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 48,
+      "name": "SAFE EXPRESS",
+      "address": "04 GULMOHAR AVENAU WESTENED GREEN AT RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5172,
+      "lng": 77.1372,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 49,
+      "name": "SANDEEP HAZOORILAL",
+      "address": "F 100 RADHEY MOHAN DRIVE AT CHATTARPUR NEW DELHI -110074",
+      "pincode": "110074",
+      "lat": 28.4981,
+      "lng": 77.1881,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 50,
+      "name": "SKG HOMES",
+      "address": "D-2 MAHARANI BAGH NEW DELHI -110065",
+      "pincode": "110065",
+      "lat": 28.567,
+      "lng": 77.26,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 51,
+      "name": "SONI FARM",
+      "address": "142 AVENAU -7 , CHURCH ROAD VASANT KUNJ NEW DELHI -110070",
+      "pincode": "110070",
+      "lat": 28.5209,
+      "lng": 77.1509,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 52,
+      "name": "STONEX INDIA",
+      "address": "A-1, UDYOG NAGAR, INDUSTRIAL COMPLEX, NEW ROHTAK ROAD, WEST DELHI, NEW DELHI-110018",
+      "pincode": "110018",
+      "lat": 28.6318,
+      "lng": 77.1018,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 53,
+      "name": "TRIDENT REALITY",
+      "address": "BUILDING NO. 310 PRAKASDEEP BUILDING 7 TOLSTOY MARG NEW DELHI-110001",
+      "pincode": "110001",
+      "lat": 28.6331,
+      "lng": 77.2204,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 54,
+      "name": "TRUMP TOWER",
+      "address": "GATE NO. 3, SEC. 65 AT GURGAON (HARYANA) -122102",
+      "pincode": "122102",
+      "lat": 28.3836,
+      "lng": 77.1136,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 55,
+      "name": "UNITY KAROL BAGH",
+      "address": "AMRITAM , FARM NO. 1 , PRAKRITI MARG SULTANPUR NEW DELHI -110030",
+      "pincode": "110030",
+      "lat": 28.5045,
+      "lng": 77.1545,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 56,
+      "name": "VINITA SARAF",
+      "address": "F -6, ANUPAM NAGAR , BEHIND TV TOWER SHANKAR NAGAR RAIPUR (CHATTISGARH) -492007",
+      "pincode": "492007",
+      "lat": 21.2568,
+      "lng": 81.635,
+      "city": "Raipur",
+      "state": "Chhattisgarh",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 57,
+      "name": "VARUN JAIPURIA",
+      "address": "FARM NO. 8 MAULSARI AVENAU AT WESTENED GREEN RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5163,
+      "lng": 77.1363,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 58,
+      "name": "VARUN TULI RESIDENCE",
+      "address": "PLOT NO-31, BLOCK C WESTEND SHANTINIKETAN NEW DELHI-110021",
+      "pincode": "110021",
+      "lat": 28.5872,
+      "lng": 77.1772,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 59,
+      "name": "VENUS STAR CONSTRUCTION",
+      "address": "B-7 HAUZ KHAS NEW DELHI-110016",
+      "pincode": "110016",
+      "lat": 28.5575,
+      "lng": 77.2082,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 60,
+      "name": "WHITELAND  - BLISSVILEE SEC-76 GRURUGRAM",
+      "address": "THE ASPEN & ICONIC , SEC.76, VILLAGE -KHERKI DAULA GURUGRAM (HARYANA -122001",
+      "pincode": "122001",
+      "lat": 28.4595,
+      "lng": 77.0266,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 61,
+      "name": "VARUN KHURANA",
+      "address": "D-1, PUSHPANJALI NEW DELHI-110038",
+      "pincode": "110038",
+      "lat": 28.5109,
+      "lng": 77.1309,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 62,
+      "name": "SHEETAL ARORA",
+      "address": "01 NO. CASURINA AVENAU AT RAJOKARI NEW DELHI -110038",
+      "pincode": "110038",
+      "lat": 28.5118,
+      "lng": 77.1318,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 63,
+      "name": "SANJAY GUPTA",
+      "address": "WISTERIA CLUB ROAD BANDHWARI GURGAON (HARYANA) -122003",
+      "pincode": "122003",
+      "lat": 28.4227,
+      "lng": 77.1327,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 64,
+      "name": "RIA CHOPRA JUNEJA",
+      "address": "15 NO ,DLF OAK DRIVE,MEHRAULI NEW DELHI-110074",
+      "pincode": "110074",
+      "lat": 28.4936,
+      "lng": 77.1836,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 65,
+      "name": "NIKHIL BAMMI",
+      "address": "VILLA NO. 132, SECTOR-33,NEAR SUBHASH CHOWK, GURUGRAM, HARYANA-122001",
+      "pincode": "122001",
+      "lat": 28.464,
+      "lng": 77.0311,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 66,
+      "name": "NAKUL BHATIA",
+      "address": "PLOT NO. D -5/31 DLF PHASE -I GURGAON (HARYANA) -",
+      "pincode": null,
+      "lat": 28.5409,
+      "lng": 77.2784,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 67,
+      "name": "MANOJ SETHI FARM",
+      "address": "D 25 ANSAL VILLA SATBARI CHATTARPUR NEW DELHI -110074",
+      "pincode": "110074",
+      "lat": 28.4963,
+      "lng": 77.1863,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 68,
+      "name": "ASEEM KHURANA",
+      "address": "E -12/2 VASANT VIHAR NEW DELHI - 110057",
+      "pincode": "110057",
+      "lat": 28.5642,
+      "lng": 77.1672,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 69,
+      "name": "ARJUN JUNEJA  - HEAT PUMP",
+      "address": "15 NO ,DLF OAK DRIVE,MEHRAULI NEW DELHI-110074",
+      "pincode": "110074",
+      "lat": 28.4981,
+      "lng": 77.1881,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 70,
+      "name": "ADHIKANSH GEM-89  - CONSULTANCY",
+      "address": "12A FLOOR TOWER-2, M3M INTERNATIONAL  FINANCIAL CENTOR, SECTOR-66 GURUGRAM, HARYANA-122002",
+      "pincode": "122002",
+      "lat": 28.47,
+      "lng": 77.09,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 71,
+      "name": "AGGARWAL PR ROAD  - CONSULTANCY",
+      "address": "AGGARWAL RESIDENCE (0877) PRITHAVIRAJ  ROAD, NEW DELHI-110003",
+      "pincode": "110003",
+      "lat": 28.5909,
+      "lng": 77.2309,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 72,
+      "name": "DESIGN CELL - CONSULTANCY",
+      "address": "601, 6th FLOOR BESTECH CHAMBER B-BLOCK , SUSHANTLOK-1 SECTOR-27 GURGAON-122002",
+      "pincode": "122002",
+      "lat": 28.4718,
+      "lng": 77.0918,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 73,
+      "name": "WHITELAND  - CONSULTANCY",
+      "address": "10th FLOOR, TOWER-A, WORLDMARK, SECTOR-65, GURGAON, HARYANA-122001",
+      "pincode": "122001",
+      "lat": 28.4622,
+      "lng": 77.0293,
+      "city": "Gurugram",
+      "state": "Haryana",
+      "geofenceRadius": 200
+    }
+  ],
+  "employees": [
+    {
+      "sno": 1,
+      "name": "Kulamani Rout",
+      "rawName": "Kulamani Rout",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 2,
+      "name": "Lakhan Kumar",
+      "rawName": "Lakhan Kumar",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 3,
+      "name": "Jatin",
+      "rawName": "Jatin",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 4,
+      "name": "Vikas",
+      "rawName": "Vikas Driver",
+      "designation": "Driver",
+      "department": "Transport",
+      "vehicleType": "CAR"
+    },
+    {
+      "sno": 5,
+      "name": "Raj",
+      "rawName": "Raj Driver",
+      "designation": "Driver",
+      "department": "Transport",
+      "vehicleType": "CAR"
+    },
+    {
+      "sno": 6,
+      "name": "Anjuman Dhingra",
+      "rawName": "Anjuman Dhingra",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 7,
+      "name": "Manisha Gupta",
+      "rawName": "Manisha Gupta Sales Exe",
+      "designation": "Sales Executive",
+      "department": "Sales",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 8,
+      "name": "Bheem",
+      "rawName": "Bheem",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 9,
+      "name": "Vijay Kumar",
+      "rawName": "Vijay Kumar",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 10,
+      "name": "Sarat K Patra",
+      "rawName": "Sarat K Patra",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 11,
+      "name": "Subrat Pradhan",
+      "rawName": "Subrat Pradhan-wibi",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 12,
+      "name": "Bharat Dash",
+      "rawName": "Bharat Dash",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 13,
+      "name": "Laxmi",
+      "rawName": "Laxmi (elect)",
+      "designation": "Electrician",
+      "department": "Electrical",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 14,
+      "name": "Chetan Sharma",
+      "rawName": "Chetan Sharma",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 15,
+      "name": "Prakash Jha",
+      "rawName": "Prakash Jha",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 16,
+      "name": "Dinesh",
+      "rawName": "Dinesh",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 17,
+      "name": "Pawan",
+      "rawName": "Pawan Electrician",
+      "designation": "Electrician",
+      "department": "Electrical",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 18,
+      "name": "Imran MD",
+      "rawName": "Imran MD",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 19,
+      "name": "Manohar",
+      "rawName": "Manohar (Plumber)",
+      "designation": "Plumber",
+      "department": "Plumbing",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 20,
+      "name": "T. Mohapatra",
+      "rawName": "T. Mohapatra (plumber)",
+      "designation": "Plumber",
+      "department": "Plumbing",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 21,
+      "name": "Naresh Kumar",
+      "rawName": "Naresh Kumar",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 22,
+      "name": "Balram",
+      "rawName": "Balram",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 23,
+      "name": "Shiv Sagar",
+      "rawName": "Shiv Sagar",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 24,
+      "name": "Salik Ram",
+      "rawName": "Salik Ram",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 25,
+      "name": "Ganga Ram",
+      "rawName": "Ganga Ram",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 26,
+      "name": "Sultan",
+      "rawName": "Sultan",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 27,
+      "name": "Nitin",
+      "rawName": "Nitin",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 28,
+      "name": "Dharmender",
+      "rawName": "Dharmender",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 29,
+      "name": "Mohmd Soyab",
+      "rawName": "Mohmd Soyab",
+      "designation": "Field Staff",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 30,
+      "name": "Nitin Rajput",
+      "rawName": "Nitin Rajput- electrician",
+      "designation": "Electrician",
+      "department": "Electrical",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 31,
+      "name": "Vikas",
+      "rawName": "Vikas Helper",
+      "designation": "Helper",
+      "department": "Operations",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 32,
+      "name": "Pawan",
+      "rawName": "Pawan (electrician) NEW",
+      "designation": "Electrician",
+      "department": "Electrical",
+      "vehicleType": "BIKE"
+    },
+    {
+      "sno": 33,
+      "name": "Yogesh (Site Supervisior)",
+      "rawName": "Yogesh (Site Supervisior) NEW",
+      "designation": "Site Supervisor",
+      "department": "Operations",
+      "vehicleType": "CAR"
+    }
+  ]
+}
