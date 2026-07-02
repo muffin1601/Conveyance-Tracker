@@ -3,7 +3,7 @@
 import { useEffect, useState, useTransition, useCallback } from "react";
 import {
   Loader2, Check, ArrowRight, MapPin, Bike, Car, TrainFront,
-  LocateFixed, Plus, X, Save, AlertTriangle,
+  LocateFixed, X, Save, AlertTriangle,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { logVisit, previewVisit } from "@/app/actions/visit";
@@ -58,7 +58,7 @@ export function CheckinForm({
   const [pending, start] = useTransition();
 
   // GPS / custom-location UI panels.
-  const [panel, setPanel] = useState<"none" | "gps" | "manual">("none");
+  const [panel, setPanel] = useState<"none" | "gps">("none");
 
   const fareNum = parseFloat(fare);
   const useActual = mode === "BUSMETRO" && fareNum > 0;
@@ -209,9 +209,6 @@ export function CheckinForm({
             <button type="button" onClick={() => setPanel(panel === "gps" ? "none" : "gps")} className="btn-ghost text-xs">
               <LocateFixed className="h-3.5 w-3.5" /> Use Current GPS
             </button>
-            <button type="button" onClick={() => setPanel(panel === "manual" ? "none" : "manual")} className="btn-ghost text-xs">
-              <Plus className="h-3.5 w-3.5" /> Add Custom Location
-            </button>
           </div>
         )}
       </div>
@@ -221,12 +218,6 @@ export function CheckinForm({
           employeeId={employeeId}
           onUse={(d) => { setDest(d); setPanel("none"); setUseManual(false); }}
           onSaved={() => { refreshLocations(employeeId); }}
-        />
-      )}
-      {panel === "manual" && employeeId && (
-        <ManualLocationForm
-          employeeId={employeeId}
-          onSaved={(id) => { refreshLocations(employeeId); onSelectDestAfterSave(id); }}
         />
       )}
 
@@ -296,13 +287,6 @@ export function CheckinForm({
       </button>
     </div>
   );
-
-  // Select a location right after it's created (manual form).
-  function onSelectDestAfterSave(id: string) {
-    setDest({ kind: "CUSTOM", customLocationId: id, hasCoords: false });
-    setUseManual(true);
-    setPanel("none");
-  }
 }
 
 // ── GPS capture panel ────────────────────────────────────────────────
@@ -424,49 +408,6 @@ function GpsCapture({
           </div>
         </div>
       )}
-    </div>
-  );
-}
-
-// ── Manual custom-location form ──────────────────────────────────────
-function ManualLocationForm({
-  employeeId, onSaved,
-}: {
-  employeeId: string;
-  onSaved: (id: string) => void;
-}) {
-  const [f, setF] = useState({ locationName: "", address: "", landmark: "", city: "", state: "" });
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
-  const set = (k: keyof typeof f) => (e: React.ChangeEvent<HTMLInputElement>) => setF({ ...f, [k]: e.target.value });
-
-  async function save() {
-    setError("");
-    if (f.locationName.trim().length < 2) { setError("Enter a location name."); return; }
-    setSaving(true);
-    try {
-      const loc = await saveCustomLocation({ employeeId, source: "MANUAL", ...f });
-      onSaved(loc.id);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally { setSaving(false); }
-  }
-
-  return (
-    <div className="rounded-lg border p-3 space-y-2">
-      <div className="flex items-center gap-2 text-sm font-medium"><Plus className="h-4 w-4 text-brand" /> Add a custom location</div>
-      <input className="input text-sm" placeholder="Location name *" value={f.locationName} onChange={set("locationName")} />
-      <input className="input text-sm" placeholder="Address" value={f.address} onChange={set("address")} />
-      <div className="grid grid-cols-2 gap-2">
-        <input className="input text-sm" placeholder="Landmark" value={f.landmark} onChange={set("landmark")} />
-        <input className="input text-sm" placeholder="City" value={f.city} onChange={set("city")} />
-      </div>
-      <input className="input text-sm" placeholder="State" value={f.state} onChange={set("state")} />
-      <p className="text-xs text-muted">No GPS coordinates — you&apos;ll enter the trip distance manually when logging.</p>
-      {error && <p className="text-sm text-red-600">{error}</p>}
-      <button type="button" onClick={save} disabled={saving} className="btn-primary w-full text-sm">
-        {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save Location
-      </button>
     </div>
   );
 }
