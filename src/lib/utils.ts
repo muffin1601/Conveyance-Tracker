@@ -17,12 +17,19 @@ export function km(value: number): string {
   return `${value.toFixed(1)} km`;
 }
 
+// Business timezone. Production servers (e.g. Vercel) run in UTC, which would
+// otherwise bucket late-evening IST activity onto the wrong calendar day. All
+// day/month grouping is computed in this zone. Override via APP_TIMEZONE.
+const APP_TZ = process.env.APP_TIMEZONE || "Asia/Kolkata";
+
 export function todayKey(d = new Date()): string {
-  // Local YYYY-MM-DD
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+  // YYYY-MM-DD in the business timezone. en-CA gives ISO-style YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: APP_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
 }
 
 export function monthKey(d = new Date()): string {

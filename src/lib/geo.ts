@@ -33,7 +33,7 @@ export interface DistanceResult {
   roadKm: number | null;
   haversineKm: number;
   durationMin: number;
-  source: "GOOGLE" | "HAVERSINE" | "CACHE";
+  source: "GOOGLE" | "OSRM" | "HAVERSINE" | "CACHE";
 }
 
 function cacheKey(a: LatLng, b: LatLng): string {
@@ -91,6 +91,29 @@ export async function computeDistance(
     } catch {
       // fall through to Haversine
     }
+  }
+
+  // Free provider: OSRM public routing (no key). Tried when Google is not
+  // configured (or fails). Results are cached like Google's so a route is
+  // resolved at most once.
+  try {
+    const osrm = new URL(
+      `https://router.project-osrm.org/route/v1/driving/${a.lng},${a.lat};${b.lng},${b.lat}`,
+    );
+    osrm.searchParams.set("overview", "false");
+    const res = await fetch(osrm, { cache: "no-store" });
+    const data = await res.json();
+    const route = data?.routes?.[0];
+    if (data?.code === "Ok" && route) {
+      const roadKm = +(route.distance / 1000).toFixed(2);
+      const durationMin = Math.round(route.duration / 60);
+      await prisma.distanceCache.create({
+        data: { key, roadKm, haversineKm, durationMin, source: "OSRM" },
+      });
+      return { distanceKm: roadKm, roadKm, haversineKm, durationMin, source: "OSRM" };
+    }
+  } catch {
+    // fall through to Haversine
   }
 
   // Fallback: road-factor adjusted Haversine.

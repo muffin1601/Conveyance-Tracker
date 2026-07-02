@@ -20,13 +20,17 @@ default journey origin.
 | Styling      | Tailwind CSS (light theme, 2px radius), lucide-react icons |
 | Data         | Prisma ORM. **SQLite for local dev**, Postgres for production |
 | Auth         | DB-backed sessions, signed JWT cookie (`jose`), bcrypt, RBAC |
-| Maps         | Google Distance Matrix (optional) → Haversine fallback |
+| Maps         | Google Distance Matrix (optional) → OSRM (free) → Haversine fallback |
+| Geocoding    | OpenStreetMap Nominatim (free, no key) for GPS reverse-geocoding |
 | PWA          | Manifest + service worker (app-shell cache, offline page) |
+| Uploads      | Supabase Storage (miscellaneous-expense bill attachments) |
 | Integrations | Resend (email), Cloudflare R2 (files), Sentry, PostHog — drop-in via env |
 
-> The app runs **fully offline of any third-party key**. Google Maps, Resend,
-> R2, Sentry and PostHog are optional — without them the distance engine uses a
-> road-factor-adjusted Haversine formula and notifications stay in-app.
+> The app runs **fully offline of any third-party key**. Google Maps, Vercel
+> Blob, Resend, R2, Sentry and PostHog are optional — without a Maps key the
+> distance engine falls back to OSRM then a road-factor-adjusted Haversine
+> formula, GPS reverse-geocoding uses free Nominatim, and without a Blob token
+> expenses still save (only file upload is disabled). Notifications stay in-app.
 
 ---
 
@@ -68,6 +72,55 @@ with user, IP, device and timestamp.
 
 See [`docs/`](docs) for the [ERD](docs/ERD.md), [API reference](docs/API.md)
 and [deployment guide](docs/DEPLOYMENT.md).
+
+---
+
+## Miscellaneous expenses & custom locations
+
+Beyond conveyance legs, the app records **non-conveyance expenses** and lets
+staff travel to **locations that aren't in the master site list** — both kept
+cleanly separate from the existing journey/reimbursement logic.
+
+### Miscellaneous expenses (`/app` → *Miscellaneous Expenses*)
+- Categories: Parking, Toll Tax, Food, Tea/Coffee, Auto Repair, Vehicle
+  Washing, Fuel, Hotel, Courier, and **Other** (free-text category).
+- Each entry has amount, date, optional description, notes and an optional
+  **bill upload** (PDF/PNG/JPG/JPEG/WEBP, ≤ 10 MB) to a **private** Supabase
+  Storage bucket via signed URLs — see [docs/STORAGE.md](docs/STORAGE.md).
+  Conveyance legs support the same bill attachment from the day summary.
+- Add / edit / delete freely. Totals surface in the day summary
+  (Conveyance Total · Miscellaneous Total · **Grand Total**) and never affect
+  conveyance calculations.
+
+### Custom & GPS locations (`/app` → *Log Site Visit* → destination)
+The destination picker offers master sites **plus** three ways to reach an
+unlisted place:
+- **📍 Use Current GPS** — captures browser geolocation, reverse-geocodes it
+  (Nominatim), shows the detected address, and optionally saves it as a
+  reusable personal location.
+- **➕ Add Custom Location** — manual entry (name, address, landmark, city,
+  state) for when GPS is unavailable; distance is entered by hand.
+- **★ My Saved Locations** — personal locations appear only for their owner.
+
+Distance for GPS/custom destinations flows through the existing engine
+(Google → OSRM → Haversine), with a **manual-distance** fallback. Legs are
+tagged **Master / GPS / Custom** for report filtering.
+
+**Admin** (`/app/admin`): promote a frequently-used personal location to a
+**global** one (visible to everyone), view Conveyance / Miscellaneous / Grand
+totals, filter entries by location type, and export three CSVs — **Summary**
+(per employee-day totals), **Conveyance** (per-leg, `?type=` filterable) and
+**Miscellaneous**.
+
+### Environment
+| Var | Purpose | Required? |
+|-----|---------|-----------|
+| `GOOGLE_MAPS_API_KEY` | Best-accuracy distance/geocoding | Optional (OSRM + Nominatim used otherwise) |
+| `SUPABASE_URL` + `SUPABASE_SERVICE_ROLE_KEY` | Supabase Storage for bill uploads (bucket auto-created) | Only if attachments are used |
+
+After pulling these changes, run `npm run db:push` (or `npx prisma db push`)
+to create the new `MiscellaneousExpense` / `UserCustomLocation` tables and the
+additive `Journey` columns — existing data is untouched.
 
 ---
 

@@ -23,6 +23,45 @@ export const VEHICLE_LABEL: Record<VehicleType, string> = {
   BUS: "Bus",
 };
 
+// Miscellaneous (non-conveyance) expense categories. "OTHER" requires a
+// free-text customCategory. Order here drives the dropdown order in the UI.
+export const MISC_CATEGORIES = [
+  "PARKING",
+  "TOLL",
+  "FOOD",
+  "TEA",
+  "REPAIR",
+  "WASH",
+  "FUEL",
+  "HOTEL",
+  "COURIER",
+  "OTHER",
+] as const;
+export type MiscCategory = (typeof MISC_CATEGORIES)[number];
+
+export const MISC_CATEGORY_LABEL: Record<MiscCategory, string> = {
+  PARKING: "Parking",
+  TOLL: "Toll Tax",
+  FOOD: "Food",
+  TEA: "Tea/Coffee",
+  REPAIR: "Auto Repair",
+  WASH: "Vehicle Washing",
+  FUEL: "Fuel",
+  HOTEL: "Hotel",
+  COURIER: "Courier",
+  OTHER: "Other",
+};
+
+// How a journey's destination was chosen — used for report filtering.
+export const LOCATION_TYPES = ["MASTER", "GPS", "CUSTOM"] as const;
+export type LocationType = (typeof LOCATION_TYPES)[number];
+
+export const LOCATION_TYPE_LABEL: Record<LocationType, string> = {
+  MASTER: "Master Location",
+  GPS: "GPS Location",
+  CUSTOM: "Custom Location",
+};
+
 export const CLAIM_STATUSES = [
   "DRAFT",
   "SUBMITTED",
