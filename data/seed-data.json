@@ -811,6 +811,17 @@
       "city": "Gurugram",
       "state": "Haryana",
       "geofenceRadius": 200
+    },
+    {
+      "sno": 74,
+      "name": "DSIIDC INDUSTRIAL COMPLEX - B-20",
+      "address": "2nd Floor, B-20, DSIIDC Industrial Complex, Near Udyog Nagar Metro Station, New Delhi 110041. Contact: 9958582734",
+      "pincode": "110041",
+      "lat": 28.68252,
+      "lng": 77.079079,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
     }
   ],
   "employees": [
