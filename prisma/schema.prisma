@@ -80,6 +80,7 @@ model Employee {
   claims    Claim[]
   customLocations UserCustomLocation[]
   miscExpenses    MiscellaneousExpense[]
+  journeyResets   JourneyReset[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -88,6 +89,9 @@ model Employee {
   @@index([department])
   @@index([managerId])
   @@index([status])
+  // Serves the employee picker: WHERE status = 'ACTIVE' ORDER BY name.
+  @@index([status, name])
+  @@index([name])
 }
 
 model Site {
@@ -119,6 +123,11 @@ model Site {
   @@index([status])
   @@index([city])
   @@index([pincode])
+  // Serves the location picker: WHERE status = 'ACTIVE' AND isOffice = false
+  // ORDER BY name, and the head-office lookup on every visit.
+  @@index([status, isOffice, name])
+  @@index([name])
+  @@index([isOffice])
 }
 
 // A SiteVisit is a single punch-in/punch-out at a site.
@@ -223,6 +232,27 @@ model Journey {
   @@index([workDate])
   @@index([fromSiteId, toSiteId])
   @@index([locationType])
+  // Journey chaining reads the highest-sequence leg of an employee's day on
+  // every preview and every logged visit — this makes it an index-only seek.
+  @@index([employeeId, workDate, sequence])
+  @@index([createdAt])
+}
+
+// Marks the point at which an employee manually restarted their day's journey
+// chain ("Reset Journey"). The next leg after a reset starts from the head
+// office again; legs at or below `afterSequence` stay untouched so history,
+// reports and exports are unaffected.
+model JourneyReset {
+  id            String   @id @default(cuid())
+  employeeId    String
+  workDate      String // YYYY-MM-DD
+  afterSequence Int // legs with sequence <= this are excluded from chaining
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, workDate])
 }
 
 // Memoised distance/duration between two coordinate pairs.
@@ -300,6 +330,7 @@ model MiscellaneousExpense {
   @@index([employeeId, workDate])
   @@index([workDate])
   @@index([category])
+  @@index([createdAt])
 }
 
 // ──────────────────────────────────────────────────────────────

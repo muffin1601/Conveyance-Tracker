@@ -1,9 +1,12 @@
 "use client";
 
-import { useEffect, useState, useTransition, useCallback } from "react";
+import { useEffect, useState, useTransition, useCallback, useMemo } from "react";
 import { Loader2, Plus, Pencil, Trash2, Check, X, Receipt, Paperclip } from "lucide-react";
 import { addMiscExpense, updateMiscExpense, deleteMiscExpense, listMiscExpenses } from "@/app/actions/misc";
 import { MISC_CATEGORIES, MISC_CATEGORY_LABEL, type MiscCategory } from "@/lib/enums";
+import { Combobox, type ComboOption } from "@/components/Combobox";
+import { Skeleton } from "@/components/ui";
+import { errorMessage } from "@/lib/errors";
 import { inr, todayKey, cn } from "@/lib/utils";
 import { BillUpload, type BillMetaValue } from "@/components/BillUpload";
 import { BillActions } from "@/components/BillActions";
@@ -25,25 +28,44 @@ export function MiscExpenses({ employees, uploadsEnabled }: { employees: Employe
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
   const [showForm, setShowForm] = useState(false);
+  const [loadError, setLoadError] = useState("");
 
   const refresh = useCallback((empId: string) => {
-    if (!empId) { setItems([]); return; }
+    if (!empId) { setItems([]); setLoadError(""); return; }
     setLoading(true);
-    listMiscExpenses(empId).then((r) => setItems(r as Expense[])).catch(() => setItems([])).finally(() => setLoading(false));
+    setLoadError("");
+    listMiscExpenses(empId)
+      .then((r) => setItems(r as Expense[]))
+      .catch((e) => { setItems([]); setLoadError(errorMessage(e)); })
+      .finally(() => setLoading(false));
   }, []);
 
+  // Loads this employee's expenses whenever the selection changes. Fetching
+  // in response to a changed input is a legitimate effect; `refresh` guards
+  // against the empty selection and owns its own loading/error state.
+  // eslint-disable-next-line react-hooks/set-state-in-effect
   useEffect(() => { refresh(employeeId); }, [employeeId, refresh]);
 
   const total = items.reduce((s, e) => s + e.amount, 0);
+
+  const employeeOptions = useMemo<ComboOption[]>(
+    () => employees.map((e) => ({ value: e.id, label: e.name, sublabel: e.designation })),
+    [employees],
+  );
 
   return (
     <div className="space-y-4">
       <div>
         <label className="label" htmlFor="misc-emp">Employee</label>
-        <select id="misc-emp" className="input" value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setShowForm(false); setEditing(null); }}>
-          <option value="">— Select your name —</option>
-          {employees.map((e) => <option key={e.id} value={e.id}>{e.name} · {e.designation}</option>)}
-        </select>
+        <Combobox
+          id="misc-emp"
+          options={employeeOptions}
+          value={employeeId}
+          onChange={(id) => { setEmployeeId(id); setShowForm(false); setEditing(null); }}
+          placeholder="— Select your name —"
+          searchPlaceholder="Search by name or role…"
+          emptyMessage="No employee matches that search."
+        />
       </div>
 
       {employeeId && (
@@ -64,8 +86,18 @@ export function MiscExpenses({ employees, uploadsEnabled }: { employees: Employe
             />
           )}
 
-          {loading ? (
-            <div className="flex items-center gap-2 text-sm text-muted"><Loader2 className="h-4 w-4 animate-spin" /> Loading…</div>
+          {loadError ? (
+            <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
+              <p>{loadError}</p>
+              <button type="button" onClick={() => refresh(employeeId)} className="btn-ghost mt-2 text-xs">
+                Try again
+              </button>
+            </div>
+          ) : loading ? (
+            <div role="status" aria-label="Loading expenses" className="space-y-2">
+              <Skeleton className="h-14 w-full" />
+              <Skeleton className="h-14 w-full" />
+            </div>
           ) : items.length === 0 ? (
             <p className="text-sm text-muted py-4 text-center">No miscellaneous expenses recorded.</p>
           ) : (
@@ -143,14 +175,18 @@ function ExpenseForm({
 
   function submit() {
     setError("");
-    if (!(parseFloat(amount) > 0)) { setError("Amount must be greater than zero."); return; }
+    const amountNum = parseFloat(amount);
+    if (!Number.isFinite(amountNum) || amountNum <= 0) { setError("Enter an amount greater than ₹0."); return; }
+    if (amountNum > 1_000_000) { setError("That amount looks too large — please check it."); return; }
     if (category === "OTHER" && !customCategory.trim()) { setError("Enter a custom category for “Other”."); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) { setError("Choose a valid date."); return; }
+    if (workDate > todayKey()) { setError("The date cannot be in the future."); return; }
 
     const payload = {
       employeeId,
       category,
       customCategory: category === "OTHER" ? customCategory.trim() : undefined,
-      amount: parseFloat(amount),
+      amount: amountNum,
       description: description || undefined,
       notes: notes || undefined,
       workDate,
@@ -164,7 +200,7 @@ function ExpenseForm({
         else await addMiscExpense(payload);
         onDone();
       } catch (e) {
-        setError((e as Error).message);
+        setError(errorMessage(e));
       }
     });
   }

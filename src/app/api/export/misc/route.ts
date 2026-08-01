@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { isSettingsUnlocked } from "@/app/actions/settings";
 import { monthKey } from "@/lib/utils";
 import { MISC_CATEGORY_LABEL, type MiscCategory } from "@/lib/enums";
 
@@ -9,6 +10,13 @@ function csvCell(v: unknown): string {
 }
 
 export async function GET(req: NextRequest) {
+  // These endpoints stream every employee's travel and expense data for a whole
+  // month. The Admin page that links to them is PIN-gated, but the URLs
+  // themselves were reachable by anyone who knew the path. Same gate, same key.
+  if (!(await isSettingsUnlocked())) {
+    return NextResponse.json({ error: "Admin is locked." }, { status: 401 });
+  }
+
   const period = req.nextUrl.searchParams.get("period") ?? monthKey();
 
   const items = await prisma.miscellaneousExpense.findMany({

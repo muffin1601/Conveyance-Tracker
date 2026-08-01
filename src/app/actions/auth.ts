@@ -28,5 +28,7 @@ export async function loginAction(_prev: unknown, formData: FormData) {
 
 export async function logoutAction() {
   await logout();
-  redirect("/login");
+  // There is no /login route in this app — access is by selecting your name on
+  // /app. Redirecting to /login sent users to a 404.
+  redirect("/app");
 }

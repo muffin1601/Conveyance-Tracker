@@ -3,8 +3,10 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
-import { computeDistance } from "@/lib/geo";
+import { memo } from "@/lib/cache";
+import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
+import { legFromName, legToName } from "@/lib/journeyEndpoint";
 import { getSettings } from "@/lib/settings";
 import { isSettingsUnlocked } from "./settings";
 import { purgeBillObject, auditBill } from "./bills";
@@ -30,9 +32,13 @@ const schema = z.object({
   employeeId: z.string().min(1, "Select your name."),
   destination: destinationSchema,
   mode: z.enum(TRAVEL_MODES),
-  fareActual: z.number().min(0).optional(),
+  fareActual: z.number().min(0).max(100_000, "Fare looks too large — check the amount.").optional(),
   // Manual distance (km) — used only when automatic calculation is unavailable.
-  manualDistanceKm: z.number().positive().max(2000).optional(),
+  manualDistanceKm: z
+    .number()
+    .positive("Distance must be greater than 0 km.")
+    .max(2000, "Distance must be 2,000 km or less.")
+    .optional(),
 });
 
 type Input = z.infer<typeof schema>;
@@ -48,51 +54,77 @@ interface Point {
 }
 
 /**
+ * The last leg that still counts towards today's chain, plus the reset marker.
+ * Fetched as one round-trip pair so callers can run it alongside the office
+ * and destination lookups instead of after them.
+ */
+async function loadChainTail(employeeId: string, workDate: string) {
+  const [last, reset] = await Promise.all([
+    prisma.journey.findFirst({
+      where: { employeeId, workDate },
+      orderBy: { sequence: "desc" },
+      include: { toSite: { select: { id: true, name: true, latitude: true, longitude: true } } },
+    }),
+    prisma.journeyReset.findUnique({
+      where: { employeeId_workDate: { employeeId, workDate } },
+      select: { afterSequence: true },
+    }),
+  ]);
+  // A leg at or below the reset point no longer chains — the next trip starts
+  // from the office again — but it stays in history, reports and exports.
+  const chained = last && (!reset || last.sequence > reset.afterSequence) ? last : null;
+  return { last, chained };
+}
+
+type ChainTail = Awaited<ReturnType<typeof loadChainTail>>;
+
+/**
  * Resolve the source for the next leg (chained journeys):
- *   - First entry of the day → the Okhla head office.
- *   - Every later entry      → the employee's last destination that day.
+ *   - First entry of the day (or first after a reset) → the head office.
+ *   - Every later entry → the employee's previous destination.
  * Prefers the persisted coordinate snapshot; falls back to the joined Site
  * for legs created before coordinate snapshots existed.
  */
-async function resolveSource(
-  employeeId: string,
-  workDate: string,
-  office: Point,
-): Promise<{ from: Point; sequence: number }> {
-  const last = await prisma.journey.findFirst({
-    where: { employeeId, workDate },
-    orderBy: { sequence: "desc" },
-    include: { toSite: { select: { id: true, name: true, latitude: true, longitude: true } } },
-  });
-  if (!last) return { from: office, sequence: 0 };
+function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence: number } {
+  const { last, chained } = tail;
+  // `sequence` always continues from the highest leg of the day so a reset can
+  // never collide with an existing row's ordering.
+  const sequence = last ? last.sequence + 1 : 0;
+  if (!chained) return { from: office, sequence };
 
-  const lat = last.toLat ?? last.toSite?.latitude;
-  const lng = last.toLng ?? last.toSite?.longitude;
+  const lat = chained.toLat ?? chained.toSite?.latitude;
+  const lng = chained.toLng ?? chained.toSite?.longitude;
   const from: Point = {
-    name: last.toName ?? last.toSite?.name ?? "Previous location",
+    name: chained.toName ?? chained.toSite?.name ?? "Previous location",
     lat: lat ?? office.lat,
     lng: lng ?? office.lng,
-    siteId: last.toSiteId,
-    customLocationId: last.toCustomLocationId,
-    locationType: (last.locationType as Point["locationType"]) ?? "MASTER",
+    siteId: chained.toSiteId,
+    customLocationId: chained.toCustomLocationId,
+    locationType: (chained.locationType as Point["locationType"]) ?? "MASTER",
   };
-  return { from, sequence: last.sequence + 1 };
+  return { from, sequence };
 }
 
+/**
+ * The head office. Memoised for 5 minutes — it is read on every preview and
+ * every logged visit but changes roughly never, and each read is a ~450 ms hop.
+ */
 async function resolveOffice(): Promise<Point> {
-  const office = await prisma.site.findFirst({
-    where: { isOffice: true },
-    select: { id: true, name: true, latitude: true, longitude: true },
+  return memo("site:office", 5 * 60_000, async () => {
+    const office = await prisma.site.findFirst({
+      where: { isOffice: true },
+      select: { id: true, name: true, latitude: true, longitude: true },
+    });
+    if (!office) throw new Error("Office location not configured. Ask an admin to set it up.");
+    return {
+      name: office.name,
+      lat: office.latitude,
+      lng: office.longitude,
+      siteId: office.id,
+      customLocationId: null,
+      locationType: "MASTER" as const,
+    };
   });
-  if (!office) throw new Error("Office location not configured.");
-  return {
-    name: office.name,
-    lat: office.latitude,
-    lng: office.longitude,
-    siteId: office.id,
-    customLocationId: null,
-    locationType: "MASTER",
-  };
 }
 
 /** Turn a destination input into a resolved Point. */
@@ -168,23 +200,54 @@ async function computeLeg(from: Point, to: Point, manualDistanceKm: number | und
   return { ...d, durationMin: d.durationMin as number | null };
 }
 
+/**
+ * Same-place guard. Two endpoints are "the same" when they reference the same
+ * master site, the same saved location, or — for ad-hoc GPS points, which have
+ * no id to compare — sit within 50 m of each other.
+ */
+function isSamePlace(from: Point, to: Point): boolean {
+  if (to.siteId && from.siteId === to.siteId) return true;
+  if (to.customLocationId && from.customLocationId === to.customLocationId) return true;
+  return haversineMeters({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) < 50;
+}
+
+/**
+ * Everything a leg needs, resolved concurrently. Previously these ran one
+ * after another — office, then source, then destination, then settings — for
+ * four serial ~450 ms round-trips before the distance lookup had even started.
+ */
+async function resolveLegContext(
+  employeeId: string,
+  workDate: string,
+  destination: Input["destination"],
+) {
+  const [office, tail, to, settings] = await Promise.all([
+    resolveOffice(),
+    loadChainTail(employeeId, workDate),
+    resolveDestination(destination, employeeId),
+    getSettings(),
+  ]);
+  const { from, sequence } = resolveSource(tail, office);
+  return { from, to, sequence, settings, lastLeg: tail.last, isFirstLeg: !tail.chained };
+}
+
+/** A repeat of the previous leg within this window is treated as a double submit. */
+const DUPLICATE_WINDOW_MS = 60_000;
+
 /** Preview the next leg without persisting — powers the live estimate on the form. */
 export async function previewVisit(input: Input) {
   const { employeeId, destination, mode, fareActual, manualDistanceKm } = schema.parse(input);
-  const office = await resolveOffice();
-  const [{ from }, to] = await Promise.all([
-    resolveSource(employeeId, todayKey(), office),
-    resolveDestination(destination, employeeId),
-  ]);
+  const workDate = todayKey();
+  const { from, to, sequence, settings } = await resolveLegContext(employeeId, workDate, destination);
 
-  const sameSite = to.siteId && from.siteId === to.siteId;
-  const sameCustom = to.customLocationId && from.customLocationId === to.customLocationId;
-  if (sameSite || sameCustom) {
-    return { fromName: from.name, toName: to.name, km: 0, amount: 0, alreadyHere: true };
+  if (isSamePlace(from, to)) {
+    return {
+      fromName: from.name, toName: to.name, km: 0, amount: 0,
+      tripNumber: sequence + 1, alreadyHere: true,
+    };
   }
 
   const dist = await computeLeg(from, to, manualDistanceKm);
-  const settings = await getSettings();
   const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
   return {
     fromName: from.name,
@@ -193,6 +256,7 @@ export async function previewVisit(input: Input) {
     amount,
     durationMin: dist.durationMin,
     source: dist.source,
+    tripNumber: sequence + 1,
     alreadyHere: false,
   };
 }
@@ -200,25 +264,39 @@ export async function previewVisit(input: Input) {
 /** Log one leg. Source is auto-resolved; distance & amount computed server-side. */
 export async function logVisit(input: Input) {
   const { employeeId, destination, mode, fareActual, manualDistanceKm } = schema.parse(input);
-
-  const employee = await prisma.employee.findUnique({ where: { id: employeeId } });
-  if (!employee || employee.deletedAt) throw new Error("Employee not found.");
-
-  const office = await resolveOffice();
   const workDate = todayKey();
-  const [{ from, sequence }, to] = await Promise.all([
-    resolveSource(employeeId, workDate, office),
-    resolveDestination(destination, employeeId),
-  ]);
 
-  const sameSite = to.siteId && from.siteId === to.siteId;
-  const sameCustom = to.customLocationId && from.customLocationId === to.customLocationId;
-  if (sameSite || sameCustom) {
+  const [employee, ctx] = await Promise.all([
+    prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: { id: true, name: true, status: true, deletedAt: true },
+    }),
+    resolveLegContext(employeeId, workDate, destination),
+  ]);
+  if (!employee || employee.deletedAt) throw new Error("Employee not found.");
+  if (employee.status !== "ACTIVE") throw new Error("This employee is no longer active.");
+
+  const { from, to, sequence, settings, lastLeg } = ctx;
+  if (isSamePlace(from, to)) {
     throw new Error(`You are already at ${to.name}. Pick a different destination.`);
   }
 
+  // Duplicate guard: the same leg logged twice within a minute is a double
+  // submit (a second tab, a retried request, an impatient double tap), not a
+  // real second trip. The client also disables its button, but that cannot
+  // protect against a request that arrives from somewhere else.
+  if (
+    lastLeg &&
+    lastLeg.toName === to.name &&
+    lastLeg.fromName === from.name &&
+    Date.now() - lastLeg.createdAt.getTime() < DUPLICATE_WINDOW_MS
+  ) {
+    throw new Error(
+      `This trip (${from.name} → ${to.name}) was just logged. Refresh to see it.`,
+    );
+  }
+
   const dist = await computeLeg(from, to, manualDistanceKm);
-  const settings = await getSettings();
   const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
 
   await prisma.journey.create({
@@ -249,7 +327,121 @@ export async function logVisit(input: Input) {
   });
 
   revalidatePath("/app");
-  return { ok: true, km: dist.distanceKm, amount, from: from.name, site: to.name, employee: employee.name };
+  return {
+    ok: true,
+    km: dist.distanceKm,
+    amount,
+    from: from.name,
+    site: to.name,
+    employee: employee.name,
+    tripNumber: sequence + 1,
+  };
+}
+
+// ── Journey state (Issue 3 / 4) ───────────────────────────────────────────
+
+export interface JourneyState {
+  /** 1-based number of the trip the employee is about to log. */
+  tripNumber: number;
+  /** Where the next trip starts. Read-only unless this is the first trip. */
+  fromName: string;
+  /** True when the next leg starts at the office (day start, or after a reset). */
+  atOrigin: boolean;
+  totalKm: number;
+  totalAmount: number;
+  /** Today's legs, oldest first — the trip timeline. */
+  legs: {
+    id: string;
+    sequence: number;
+    fromName: string;
+    toName: string;
+    distanceKm: number;
+    amount: number;
+    mode: string;
+    /** False for legs that were superseded by a "Reset Journey". */
+    chained: boolean;
+    at: Date;
+  }[];
+}
+
+/**
+ * Everything the visit screen needs about today's journey, in one round-trip:
+ * the next trip number, its (auto-resolved) starting point, the running
+ * totals, and the timeline of trips already logged.
+ */
+export async function getJourneyState(employeeId: string): Promise<JourneyState | null> {
+  if (!employeeId) return null;
+  const workDate = todayKey();
+
+  const [office, legs, reset] = await Promise.all([
+    resolveOffice(),
+    prisma.journey.findMany({
+      where: { employeeId, workDate },
+      orderBy: { sequence: "asc" },
+      select: {
+        id: true, sequence: true, fromName: true, toName: true,
+        distanceKm: true, amount: true, vehicleType: true, createdAt: true,
+        fromSite: { select: { name: true } },
+        toSite: { select: { name: true } },
+        fromCustomLocation: { select: { locationName: true } },
+        toCustomLocation: { select: { locationName: true } },
+      },
+    }),
+    prisma.journeyReset.findUnique({
+      where: { employeeId_workDate: { employeeId, workDate } },
+      select: { afterSequence: true },
+    }),
+  ]);
+
+  const last = legs.length ? legs[legs.length - 1] : null;
+  const chainedTail = last && (!reset || last.sequence > reset.afterSequence) ? last : null;
+
+  return {
+    tripNumber: (last ? last.sequence + 1 : 0) + 1,
+    fromName: chainedTail ? legToName(chainedTail) : office.name,
+    atOrigin: !chainedTail,
+    totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
+    totalAmount: legs.reduce((s, l) => s + l.amount, 0),
+    legs: legs.map((l) => ({
+      id: l.id,
+      sequence: l.sequence,
+      fromName: legFromName(l),
+      toName: legToName(l),
+      distanceKm: l.distanceKm,
+      amount: l.amount,
+      mode: l.vehicleType,
+      chained: !reset || l.sequence > reset.afterSequence,
+      at: l.createdAt,
+    })),
+  };
+}
+
+/**
+ * Manually restart the day's chain. The next trip starts from the head office
+ * again; already-logged legs are left exactly as they are, so distances,
+ * fares, history, reports and exports are all unaffected.
+ */
+export async function resetJourney(employeeId: string): Promise<{ ok: true }> {
+  if (!employeeId) throw new Error("Select your name first.");
+  const workDate = todayKey();
+
+  const last = await prisma.journey.findFirst({
+    where: { employeeId, workDate },
+    orderBy: { sequence: "desc" },
+    select: { sequence: true },
+  });
+  // -1 when nothing is logged yet: the chain is already at the office, and the
+  // marker still records the intent so the UI can confirm it.
+  const afterSequence = last?.sequence ?? -1;
+
+  await prisma.journeyReset.upsert({
+    where: { employeeId_workDate: { employeeId, workDate } },
+    create: { employeeId, workDate, afterSequence },
+    update: { afterSequence },
+  });
+
+  revalidatePath("/app");
+  return { ok: true };
 }
 
 /** Remove a logged visit (Admin/correction). Gated by the admin PIN unlock. */

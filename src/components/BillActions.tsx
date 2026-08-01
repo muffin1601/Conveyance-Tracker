@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Eye, Download, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
 import { getBillUrl } from "@/app/actions/bills";
+import { errorMessage } from "@/lib/errors";
 
 /**
  * View / Download controls for an already-saved bill. URLs are short-lived and
@@ -34,7 +35,7 @@ export function BillActions({
         if (forceDownload) url += `&download=${encodeURIComponent(name || "bill")}`;
         window.open(url, "_blank", "noopener,noreferrer");
       } catch (e) {
-        setErr((e as Error).message);
+        setErr(errorMessage(e));
       }
     });
   }

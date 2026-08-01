@@ -55,3 +55,40 @@ export function StatusBadge({ status }: { status: string }) {
 export function Empty({ children }: { children: React.ReactNode }) {
   return <div className="text-sm text-muted py-8 text-center">{children}</div>;
 }
+
+/**
+ * A single shimmering placeholder block. Used instead of an empty region while
+ * a streamed server component resolves, so the page never shows dead space.
+ */
+export function Skeleton({ className }: { className?: string }) {
+  return (
+    <div
+      aria-hidden
+      className={cn("animate-pulse rounded bg-fg/[0.07] dark:bg-fg/[0.09]", className)}
+    />
+  );
+}
+
+/** Placeholder for the "Today's Summary" card while its query streams in. */
+export function SummarySkeleton({ rows = 2 }: { rows?: number }) {
+  return (
+    <div role="status" aria-label="Loading today's summary" className="space-y-3">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="rounded-lg border p-3">
+          <div className="mb-3 flex items-center justify-between">
+            <Skeleton className="h-4 w-32" />
+            <Skeleton className="h-3 w-12" />
+          </div>
+          <div className="space-y-2">
+            <Skeleton className="h-3.5 w-full" />
+            <Skeleton className="h-3.5 w-4/5" />
+          </div>
+          <div className="mt-3 flex justify-between border-t pt-2">
+            <Skeleton className="h-4 w-24" />
+            <Skeleton className="h-4 w-16" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+}

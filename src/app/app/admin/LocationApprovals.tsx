@@ -1,9 +1,10 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { Globe, MapPin, Undo2 } from "lucide-react";
 import { approveGlobalLocation } from "@/app/actions/locations";
 import { Card, SectionTitle, Empty } from "@/components/ui";
+import { errorMessage } from "@/lib/errors";
 
 interface Loc {
   id: string;
@@ -18,9 +19,18 @@ interface Loc {
 
 export function LocationApprovals({ locations }: { locations: Loc[] }) {
   const [pending, start] = useTransition();
+  const [error, setError] = useState("");
 
   function toggle(id: string, approve: boolean) {
-    start(() => approveGlobalLocation(id, approve).then(() => {}));
+    if (pending) return; // block a duplicate submit while one is in flight
+    setError("");
+    start(async () => {
+      try {
+        await approveGlobalLocation(id, approve);
+      } catch (e) {
+        setError(errorMessage(e));
+      }
+    });
   }
 
   return (
@@ -29,6 +39,9 @@ export function LocationApprovals({ locations }: { locations: Loc[] }) {
       <p className="text-xs text-muted -mt-2 mb-3">
         Promote a frequently-used personal location to a global one so it appears in everyone&apos;s dropdown.
       </p>
+      {error && (
+        <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 p-2.5 text-sm text-red-600">{error}</p>
+      )}
       {locations.length === 0 ? (
         <Empty>No custom locations yet.</Empty>
       ) : (

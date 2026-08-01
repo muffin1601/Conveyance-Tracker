@@ -5,6 +5,7 @@ import { Paperclip, Loader2, X } from "lucide-react";
 import { attachJourneyBill, removeJourneyBill } from "@/app/actions/visit";
 import { BillUpload, type BillMetaValue } from "@/components/BillUpload";
 import { BillActions } from "@/components/BillActions";
+import { errorMessage } from "@/lib/errors";
 
 /**
  * Compact per-leg bill control shown in the daily summary. The employee whose
@@ -43,7 +44,7 @@ export function JourneyBill({
         setCurrent({ path: meta.path, name: meta.name, type: meta.type });
         setOpen(false);
       } catch (e) {
-        setErr((e as Error).message);
+        setErr(errorMessage(e));
       }
     });
   }
@@ -54,7 +55,7 @@ export function JourneyBill({
         await removeJourneyBill(journeyId, employeeId);
         setCurrent(null);
       } catch (e) {
-        setErr((e as Error).message);
+        setErr(errorMessage(e));
       }
     });
   }

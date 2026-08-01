@@ -1,15 +1,23 @@
 "use client";
 
-import { useEffect, useState, useTransition, useCallback } from "react";
 import {
-  Loader2, Check, ArrowRight, MapPin, Bike, Car, TrainFront,
-  LocateFixed, X, Save, AlertTriangle,
+  useCallback, useEffect, useMemo, useRef, useState, useTransition,
+} from "react";
+import {
+  Loader2, Check, ArrowDown, MapPin, Bike, Car, TrainFront,
+  LocateFixed, X, Save, AlertTriangle, RotateCcw, Flag, History,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
-import { logVisit, previewVisit } from "@/app/actions/visit";
+import {
+  logVisit, previewVisit, getJourneyState, resetJourney,
+  type JourneyState,
+} from "@/app/actions/visit";
 import { geocodeCoords, listMyLocations, saveCustomLocation } from "@/app/actions/locations";
+import { Combobox, type ComboOption } from "@/components/Combobox";
+import { useRecentLocations } from "@/hooks/useRecentLocations";
 import type { TravelMode } from "@/lib/travel";
 import { cn, inr, km } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
 
 interface Employee { id: string; name: string; designation: string; department: string }
 interface Site { id: string; name: string; city: string | null; address: string }
@@ -25,6 +33,14 @@ const MODES: { key: TravelMode; label: string; Icon: LucideIcon }[] = [
   { key: "BUSMETRO", label: "Bus/Metro", Icon: TrainFront },
 ];
 
+const GROUP_RECENT = "Recent";
+const GROUP_SITES = "Master Locations";
+const GROUP_SAVED = "My Saved Locations";
+const GROUP_ORDER = [GROUP_RECENT, GROUP_SITES, GROUP_SAVED];
+
+/** How long typing/among-inputs settles before the server preview is requested. */
+const PREVIEW_DEBOUNCE_MS = 350;
+
 // The active destination the user has chosen.
 type Dest =
   | { kind: "SITE"; siteId: string }
@@ -33,7 +49,7 @@ type Dest =
 
 interface Preview {
   fromName: string; toName: string; km: number; amount: number;
-  durationMin?: number | null; source?: string; alreadyHere: boolean;
+  durationMin?: number | null; source?: string; tripNumber: number; alreadyHere: boolean;
 }
 
 export function CheckinForm({
@@ -47,30 +63,106 @@ export function CheckinForm({
 }) {
   const [employeeId, setEmployeeId] = useState("");
   const [myLocations, setMyLocations] = useState<CustomLoc[]>([]);
+  const [journey, setJourney] = useState<JourneyState | null>(null);
+  const [journeyLoading, setJourneyLoading] = useState(false);
   const [dest, setDest] = useState<Dest | null>(null);
   const [mode, setMode] = useState<TravelMode>("BIKE");
   const [fare, setFare] = useState("");
   const [manualKm, setManualKm] = useState("");
   const [useManual, setUseManual] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [fieldError, setFieldError] = useState<"employee" | "dest" | "manualKm" | "fare" | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [pending, start] = useTransition();
-
-  // GPS / custom-location UI panels.
+  const [resetting, startReset] = useTransition();
   const [panel, setPanel] = useState<"none" | "gps">("none");
 
+  const { recent, remember } = useRecentLocations(employeeId);
+
   const fareNum = parseFloat(fare);
+  const fareInvalid = fare.trim() !== "" && !(fareNum >= 0);
   const useActual = mode === "BUSMETRO" && fareNum > 0;
   const manualKmNum = parseFloat(manualKm);
+  const manualInvalid = useManual && manualKm.trim() !== "" && !(manualKmNum > 0);
   const manualActive = useManual && manualKmNum > 0;
+  /** Manual entry is still required but not yet filled in — hold the preview. */
+  const manualPendingInput = useManual && !manualActive;
+
+  // ── Server state for the selected employee ────────────────────────────
+  const refreshJourney = useCallback(async (empId: string) => {
+    if (!empId) { setJourney(null); return; }
+    setJourneyLoading(true);
+    try {
+      setJourney(await getJourneyState(empId));
+    } catch {
+      setJourney(null); // the summary is supplementary — never block logging
+    } finally {
+      setJourneyLoading(false);
+    }
+  }, []);
 
   const refreshLocations = useCallback((empId: string) => {
     if (!empId) { setMyLocations([]); return; }
     listMyLocations(empId).then(setMyLocations).catch(() => setMyLocations([]));
   }, []);
 
-  useEffect(() => { refreshLocations(employeeId); }, [employeeId, refreshLocations]);
+  // Both loads are independent — fire them together rather than in sequence.
+  // Fetching in response to a changed selection is a legitimate effect; both
+  // helpers own their own loading/error state.
+  useEffect(() => {
+    /* eslint-disable react-hooks/set-state-in-effect */
+    refreshLocations(employeeId);
+    void refreshJourney(employeeId);
+    /* eslint-enable react-hooks/set-state-in-effect */
+  }, [employeeId, refreshLocations, refreshJourney]);
+
+  // ── Dropdown options ──────────────────────────────────────────────────
+  const employeeOptions = useMemo<ComboOption[]>(
+    () => employees.map((e) => ({
+      value: e.id,
+      label: e.name,
+      sublabel: e.designation,
+      keywords: e.department,
+    })),
+    [employees],
+  );
+
+  /** Every selectable destination, keyed "SITE:id" / "CUSTOM:id". */
+  const baseDestOptions = useMemo<ComboOption[]>(() => {
+    const out: ComboOption[] = sites.map((s) => ({
+      value: `SITE:${s.id}`,
+      label: s.name,
+      sublabel: s.city ?? undefined,
+      keywords: s.address,
+      group: GROUP_SITES,
+    }));
+    for (const l of myLocations) {
+      out.push({
+        value: `CUSTOM:${l.id}`,
+        label: l.locationName,
+        sublabel: l.address ?? ([l.city, l.state].filter(Boolean).join(", ") || undefined),
+        group: GROUP_SAVED,
+        tag: l.isGlobal ? "shared" : l.latitude == null ? "manual" : undefined,
+      });
+    }
+    return out;
+  }, [sites, myLocations]);
+
+  /**
+   * Recently-used locations are surfaced as a pinned group at the top. They are
+   * copies (not moves) so a location is still findable under its own heading.
+   */
+  const destOptions = useMemo<ComboOption[]>(() => {
+    if (recent.length === 0) return baseDestOptions;
+    const byValue = new Map(baseDestOptions.map((o) => [o.value, o]));
+    const pinned = recent
+      .map((v) => byValue.get(v))
+      .filter((o): o is ComboOption => o !== undefined)
+      .map((o) => ({ ...o, group: GROUP_RECENT }));
+    return pinned.length ? [...pinned, ...baseDestOptions] : baseDestOptions;
+  }, [baseDestOptions, recent]);
 
   // The dropdown value encodes kind+id, e.g. "SITE:abc" / "CUSTOM:xyz".
   const selectValue =
@@ -78,51 +170,107 @@ export function CheckinForm({
     : dest?.kind === "CUSTOM" ? `CUSTOM:${dest.customLocationId}`
     : "";
 
-  function onSelectDest(value: string) {
+  const onSelectDest = useCallback((value: string) => {
     setPanel("none");
     setMsg(null);
-    if (!value) { setDest(null); return; }
-    const [kind, id] = value.split(":");
-    if (kind === "SITE") setDest({ kind: "SITE", siteId: id });
-    else {
+    setFieldError(null);
+    // Drop the previous estimate immediately — showing the old destination's
+    // distance against a new one for the length of the debounce is misleading.
+    setPreview(null);
+    setPreviewError(null);
+    if (!value) { setDest(null); setUseManual(false); return; }
+    const sep = value.indexOf(":");
+    const kind = value.slice(0, sep);
+    const id = value.slice(sep + 1);
+    if (kind === "SITE") {
+      setDest({ kind: "SITE", siteId: id });
+      setUseManual(false);
+    } else {
       const loc = myLocations.find((l) => l.id === id);
       const hasCoords = !!(loc && loc.latitude != null && loc.longitude != null);
       setDest({ kind: "CUSTOM", customLocationId: id, hasCoords });
       // Locations without coordinates can't be auto-measured — force manual km.
       setUseManual(!hasCoords);
     }
-  }
+  }, [myLocations]);
 
-  // Live preview whenever inputs change.
-  useEffect(() => {
-    if (!employeeId || !dest) { setPreview(null); return; }
-    if (manualActive === false && useManual) { setPreview(null); return; }
-    let cancelled = false;
-    setPreviewing(true);
-    previewVisit({
-      employeeId,
-      destination: destForApi(dest),
-      mode,
-      fareActual: useActual ? fareNum : undefined,
-      manualDistanceKm: manualActive ? manualKmNum : undefined,
-    })
-      .then((p) => { if (!cancelled) setPreview(p); })
-      .catch(() => { if (!cancelled) setPreview(null); })
-      .finally(() => { if (!cancelled) setPreviewing(false); });
-    return () => { cancelled = true; };
-  }, [employeeId, dest, mode, useActual, fareNum, manualActive, manualKmNum, useManual]);
+  const onSelectEmployee = useCallback((id: string) => {
+    setEmployeeId(id);
+    setDest(null);
+    setPreview(null);
+    setPreviewError(null);
+    setMsg(null);
+    setFieldError(null);
+    setUseManual(false);
+    setManualKm("");
+    setFare("");
+  }, []);
 
-  function destForApi(d: Dest) {
+  const destForApi = useCallback((d: Dest) => {
     if (d.kind === "SITE") return { kind: "SITE" as const, siteId: d.siteId };
     if (d.kind === "CUSTOM") return { kind: "CUSTOM" as const, customLocationId: d.customLocationId };
     return { kind: "GPS" as const, lat: d.lat, lng: d.lng, name: d.name };
-  }
+  }, []);
 
+  // ── Live preview (debounced, cancellable) ─────────────────────────────
+  // Previously this fired a server round-trip on every keystroke of the fare
+  // and distance fields; each one resolved a route and could take seconds.
+  const previewSeq = useRef(0);
+  useEffect(() => {
+    // Nothing to price yet. The clearing of any previous estimate is done by
+    // the selection handlers, so this effect never writes state on the way out.
+    if (!employeeId || !dest || manualPendingInput) return;
+
+    const seq = ++previewSeq.current;
+    const timer = setTimeout(() => {
+      setPreviewing(true);
+      setPreviewError(null);
+      previewVisit({
+        employeeId,
+        destination: destForApi(dest),
+        mode,
+        fareActual: useActual ? fareNum : undefined,
+        manualDistanceKm: manualActive ? manualKmNum : undefined,
+      })
+        .then((p) => {
+          if (seq !== previewSeq.current) return; // a newer request superseded this one
+          setPreview(p);
+        })
+        .catch((e) => {
+          if (seq !== previewSeq.current) return;
+          setPreview(null);
+          setPreviewError(errorMessage(e));
+        })
+        .finally(() => {
+          if (seq === previewSeq.current) setPreviewing(false);
+        });
+    }, PREVIEW_DEBOUNCE_MS);
+
+    return () => { clearTimeout(timer); };
+  }, [
+    employeeId, dest, mode, useActual, fareNum, manualActive, manualKmNum,
+    manualPendingInput, destForApi,
+  ]);
+
+  // ── Submit ────────────────────────────────────────────────────────────
   function submit() {
     setMsg(null);
-    if (!employeeId) return setMsg({ ok: false, text: "Select your name." });
-    if (!dest) return setMsg({ ok: false, text: "Choose where you are going." });
-    if (useManual && !(manualKmNum > 0)) return setMsg({ ok: false, text: "Enter the distance in km." });
+    setFieldError(null);
+    if (!employeeId) { setFieldError("employee"); return setMsg({ ok: false, text: "Select your name to continue." }); }
+    if (!dest) { setFieldError("dest"); return setMsg({ ok: false, text: "Choose where you are going." }); }
+    if (useManual && !(manualKmNum > 0)) {
+      setFieldError("manualKm");
+      return setMsg({ ok: false, text: "Enter the distance in km (a number greater than 0)." });
+    }
+    if (fareInvalid) {
+      setFieldError("fare");
+      return setMsg({ ok: false, text: "Enter a valid fare amount, or leave it blank." });
+    }
+    if (preview?.alreadyHere) {
+      setFieldError("dest");
+      return setMsg({ ok: false, text: "You are already at this location — pick a different one." });
+    }
+
     start(async () => {
       try {
         const r = await logVisit({
@@ -132,105 +280,193 @@ export function CheckinForm({
           fareActual: useActual ? fareNum : undefined,
           manualDistanceKm: manualActive ? manualKmNum : undefined,
         });
-        setMsg({ ok: true, text: `${r.from} → ${r.site} · ${km(r.km)} · ${inr(r.amount)} logged.` });
+        if (selectValue) remember(selectValue);
+        setMsg({ ok: true, text: `Trip ${r.tripNumber} logged · ${r.from} → ${r.site} · ${km(r.km)} · ${inr(r.amount)}.` });
         setDest(null); setFare(""); setManualKm(""); setUseManual(false); setPreview(null);
+        await refreshJourney(employeeId);
       } catch (e) {
-        setMsg({ ok: false, text: (e as Error).message });
+        setMsg({ ok: false, text: errorMessage(e) });
       }
     });
   }
 
-  const destName =
+  function doReset() {
+    if (!employeeId) return;
+    if (!confirm("Restart the journey? Your next trip will start from the office again. Trips already logged are kept.")) return;
+    startReset(async () => {
+      try {
+        await resetJourney(employeeId);
+        setDest(null); setPreview(null); setUseManual(false); setManualKm("");
+        setMsg({ ok: true, text: `Journey restarted — your next trip starts from ${officeName}.` });
+        await refreshJourney(employeeId);
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    });
+  }
+
+  // ── Derived display values ────────────────────────────────────────────
+  const tripNumber = preview?.tripNumber ?? journey?.tripNumber ?? 1;
+  const fromName = preview?.fromName ?? journey?.fromName ?? officeName;
+  const atOrigin = journey ? journey.atOrigin : true;
+  const destLabel =
     dest?.kind === "GPS" ? dest.name
-    : dest?.kind === "CUSTOM" ? myLocations.find((l) => l.id === dest.customLocationId)?.locationName
-    : sites.find((s) => s.id === (dest?.kind === "SITE" ? dest.siteId : ""))?.address;
+    : dest?.kind === "CUSTOM" ? myLocations.find((l) => l.id === dest.customLocationId)?.locationName ?? "Saved location"
+    : dest?.kind === "SITE" ? sites.find((s) => s.id === dest.siteId)?.name ?? "Selected site"
+    : null;
+  const destSub =
+    dest?.kind === "SITE" ? sites.find((s) => s.id === dest.siteId)?.address ?? null : null;
+
+  const canSubmit = !pending && !!employeeId && !!dest && !preview?.alreadyHere && !manualPendingInput;
 
   return (
     <div className="space-y-5">
+      {/* ── Who ─────────────────────────────────────────────────────── */}
       <div>
         <label className="label" htmlFor="emp">Your Name</label>
-        <select id="emp" className="input" value={employeeId} onChange={(e) => { setEmployeeId(e.target.value); setDest(null); setPreview(null); }}>
-          <option value="">— Select your name —</option>
-          {employees.map((e) => (
-            <option key={e.id} value={e.id}>{e.name} · {e.designation}</option>
-          ))}
-        </select>
-      </div>
-
-      {/* Starting point — auto-resolved. */}
-      {employeeId && (() => {
-        const fromName = preview?.fromName ?? officeName;
-        const atOffice = !preview || preview.fromName === officeName;
-        return (
-          <div className="rounded-lg border border-brand/30 bg-brand/5 p-3">
-            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-brand">
-              <MapPin className="h-3.5 w-3.5" /> Starting from
-            </div>
-            <div className="mt-1 font-semibold text-fg leading-tight">{fromName}</div>
-            {atOffice && officeAddress && <div className="mt-0.5 text-xs text-muted leading-snug">{officeAddress}</div>}
-          </div>
-        );
-      })()}
-
-      {/* Destination picker */}
-      <div>
-        <label className="label" htmlFor="dest">Where Are You Going</label>
-        <select id="dest" className="input" value={selectValue} onChange={(e) => onSelectDest(e.target.value)} disabled={dest?.kind === "GPS"}>
-          <option value="">— Select a location —</option>
-          <optgroup label="▼ Master Locations">
-            {sites.map((s) => (
-              <option key={s.id} value={`SITE:${s.id}`}>{s.name}{s.city ? ` · ${s.city}` : ""}</option>
-            ))}
-          </optgroup>
-          {myLocations.length > 0 && (
-            <optgroup label="★ My Saved Locations">
-              {myLocations.map((l) => (
-                <option key={l.id} value={`CUSTOM:${l.id}`}>
-                  {l.locationName}{l.isGlobal ? " (shared)" : ""}{l.latitude == null ? " · manual" : ""}
-                </option>
-              ))}
-            </optgroup>
-          )}
-        </select>
-
-        {/* GPS destination chip */}
-        {dest?.kind === "GPS" && (
-          <div className="mt-2 flex items-start gap-2 rounded-md border border-brand/30 bg-brand/5 p-2 text-sm">
-            <MapPin className="h-4 w-4 text-brand shrink-0 mt-0.5" />
-            <span className="min-w-0 flex-1 truncate">{dest.name}</span>
-            <button type="button" onClick={() => { setDest(null); setUseManual(false); }} className="text-muted hover:text-fg"><X className="h-4 w-4" /></button>
-          </div>
-        )}
-        {dest?.kind === "SITE" && destName && <p className="text-xs text-muted mt-1 truncate">{destName}</p>}
-
-        {/* Actions */}
-        {employeeId && (
-          <div className="mt-2 flex flex-wrap gap-2">
-            <button type="button" onClick={() => setPanel(panel === "gps" ? "none" : "gps")} className="btn-ghost text-xs">
-              <LocateFixed className="h-3.5 w-3.5" /> Use Current GPS
-            </button>
-          </div>
-        )}
-      </div>
-
-      {panel === "gps" && employeeId && (
-        <GpsCapture
-          employeeId={employeeId}
-          onUse={(d) => { setDest(d); setPanel("none"); setUseManual(false); }}
-          onSaved={() => { refreshLocations(employeeId); }}
+        <Combobox
+          id="emp"
+          options={employeeOptions}
+          value={employeeId}
+          onChange={onSelectEmployee}
+          placeholder="— Select your name —"
+          searchPlaceholder="Search by name, role or department…"
+          emptyMessage="No employee matches that search."
+          invalid={fieldError === "employee"}
         />
+      </div>
+
+      {employeeId && (
+        <>
+          {/* ── Trip header + journey summary ─────────────────────────── */}
+          <div className="rounded-lg border bg-bg p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <span className="badge border-brand/30 bg-brand/10 text-brand">Trip {tripNumber}</span>
+                {atOrigin && <span className="text-xs text-muted">Starting a new journey</span>}
+              </div>
+              <button
+                type="button"
+                onClick={doReset}
+                disabled={resetting || journeyLoading}
+                className="btn-ghost h-8 px-2.5 text-xs"
+              >
+                {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                Reset Journey
+              </button>
+            </div>
+
+            {/* Starting point → destination flow */}
+            <div className="mt-3 space-y-1.5">
+              <Endpoint
+                caption="Starting Point"
+                name={fromName}
+                sub={atOrigin && officeAddress ? officeAddress : undefined}
+                locked={!atOrigin}
+                lockNote={!atOrigin ? "Carried over from your last trip" : undefined}
+              />
+              <div className="flex justify-center">
+                <ArrowDown className="h-4 w-4 text-muted" />
+              </div>
+              <Endpoint
+                caption="Destination"
+                name={destLabel ?? "Not selected yet"}
+                sub={destSub ?? undefined}
+                muted={!destLabel}
+              />
+            </div>
+
+            {/* Today's running totals */}
+            <div className="mt-3 grid grid-cols-2 gap-3 border-t pt-3 text-sm">
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Today&apos;s Distance</div>
+                <div className="font-semibold tabular-nums">
+                  {journeyLoading && !journey ? "—" : km(journey?.totalKm ?? 0)}
+                </div>
+              </div>
+              <div>
+                <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Today&apos;s Conveyance</div>
+                <div className="font-semibold tabular-nums text-brand">
+                  {journeyLoading && !journey ? "—" : inr(journey?.totalAmount ?? 0)}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Where ─────────────────────────────────────────────────── */}
+          <div>
+            <label className="label" htmlFor="dest">Where Are You Going</label>
+            {dest?.kind === "GPS" ? (
+              <div className="flex items-start gap-2 rounded-md border border-brand/30 bg-brand/5 p-2.5 text-sm">
+                <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
+                <span className="min-w-0 flex-1">{dest.name}</span>
+                <button
+                  type="button"
+                  aria-label="Clear GPS destination"
+                  onClick={() => { setDest(null); setUseManual(false); }}
+                  className="text-muted hover:text-fg"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ) : (
+              <Combobox
+                id="dest"
+                options={destOptions}
+                value={selectValue}
+                onChange={onSelectDest}
+                groupOrder={GROUP_ORDER}
+                placeholder="— Select a location —"
+                searchPlaceholder="Search locations…"
+                emptyMessage="No location matches that search."
+                invalid={fieldError === "dest"}
+              />
+            )}
+
+            <div className="mt-2 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={() => setPanel(panel === "gps" ? "none" : "gps")}
+                className="btn-ghost text-xs"
+              >
+                <LocateFixed className="h-3.5 w-3.5" /> Use Current GPS
+              </button>
+            </div>
+          </div>
+
+          {panel === "gps" && (
+            <GpsCapture
+              employeeId={employeeId}
+              onUse={(d) => {
+                setDest(d); setPanel("none"); setUseManual(false);
+                setFieldError(null); setPreview(null); setPreviewError(null);
+              }}
+              onSaved={() => { refreshLocations(employeeId); }}
+            />
+          )}
+        </>
       )}
 
-      {/* Mode of transport */}
+      {/* ── Mode of transport ───────────────────────────────────────── */}
       <div>
         <label className="label">Mode of Transport</label>
         <div className="grid grid-cols-3 gap-3">
           {MODES.map((m) => (
-            <button type="button" key={m.key} onClick={() => setMode(m.key)}
-              className={cn("rounded-lg border p-4 text-center transition", mode === m.key ? "border-brand bg-brand/10" : "hover:bg-bg")}>
-              <m.Icon className={cn("h-6 w-6 mx-auto", mode === m.key ? "text-brand" : "text-muted")} />
+            <button
+              type="button"
+              key={m.key}
+              aria-pressed={mode === m.key}
+              onClick={() => setMode(m.key)}
+              className={cn(
+                "rounded-lg border p-4 text-center transition",
+                mode === m.key ? "border-brand bg-brand/10" : "hover:bg-bg",
+              )}
+            >
+              <m.Icon className={cn("mx-auto h-6 w-6", mode === m.key ? "text-brand" : "text-muted")} />
               <div className="mt-1.5 text-sm font-medium">{m.label}</div>
-              <div className="text-xs text-muted">{m.key === "BUSMETRO" ? `₹${rates[m.key]}/km or actual` : `₹${rates[m.key]}/km`}</div>
+              <div className="text-xs text-muted">
+                {m.key === "BUSMETRO" ? `₹${rates[m.key]}/km or actual` : `₹${rates[m.key]}/km`}
+              </div>
             </button>
           ))}
         </div>
@@ -239,8 +475,19 @@ export function CheckinForm({
       {mode === "BUSMETRO" && (
         <div>
           <label className="label" htmlFor="fare">Actual Fare (₹) — optional</label>
-          <input id="fare" type="number" min="0" step="1" inputMode="decimal" className="input"
-            placeholder="Leave blank to auto-calculate by distance" value={fare} onChange={(e) => setFare(e.target.value)} />
+          <input
+            id="fare"
+            type="number"
+            min="0"
+            step="1"
+            inputMode="decimal"
+            aria-invalid={fareInvalid || fieldError === "fare" || undefined}
+            className={cn("input", (fareInvalid || fieldError === "fare") && "border-red-500")}
+            placeholder="Leave blank to auto-calculate by distance"
+            value={fare}
+            onChange={(e) => { setFare(e.target.value); setFieldError(null); }}
+          />
+          {fareInvalid && <p className="mt-1 text-xs text-red-600">Enter a valid amount, or leave this blank.</p>}
         </div>
       )}
 
@@ -248,43 +495,165 @@ export function CheckinForm({
       {dest && dest.kind !== "SITE" && (
         <div className="rounded-md border p-3">
           <label className="flex items-center gap-2 text-sm">
-            <input type="checkbox" checked={useManual} onChange={(e) => setUseManual(e.target.checked)} />
+            <input
+              type="checkbox"
+              checked={useManual}
+              onChange={(e) => {
+                setUseManual(e.target.checked);
+                setFieldError(null);
+                setPreview(null);
+                setPreviewError(null);
+              }}
+            />
             Enter distance manually (if automatic calculation is unavailable)
           </label>
           {useManual && (
-            <input type="number" min="0" step="0.1" inputMode="decimal" className="input mt-2"
-              placeholder="Distance in km" value={manualKm} onChange={(e) => setManualKm(e.target.value)} />
+            <>
+              <input
+                type="number"
+                min="0"
+                step="0.1"
+                inputMode="decimal"
+                aria-label="Distance in km"
+                aria-invalid={manualInvalid || fieldError === "manualKm" || undefined}
+                className={cn("input mt-2", (manualInvalid || fieldError === "manualKm") && "border-red-500")}
+                placeholder="Distance in km"
+                value={manualKm}
+                onChange={(e) => { setManualKm(e.target.value); setFieldError(null); }}
+              />
+              {manualInvalid && <p className="mt-1 text-xs text-red-600">Distance must be a number greater than 0.</p>}
+            </>
           )}
         </div>
       )}
 
-      {preview && !preview.alreadyHere && (
+      {/* ── Live estimate ───────────────────────────────────────────── */}
+      {employeeId && dest && !preview?.alreadyHere && (
         <div className="rounded-md border bg-bg p-3 text-sm">
-          <div className="flex items-center gap-2 font-medium">
-            <span className="truncate">{preview.fromName}</span>
-            <ArrowRight className="h-3.5 w-3.5 text-muted shrink-0" />
-            <span className="truncate">{preview.toName}</span>
-          </div>
-          <div className="mt-1 text-muted tabular-nums">
-            {previewing ? "Calculating…" : (
-              <>{km(preview.km)} · <span className="text-fg font-medium">{inr(preview.amount)}</span>
-                {preview.durationMin ? ` · ~${preview.durationMin} min` : ""}
-                {preview.source === "MANUAL" ? " · manual" : ""}</>
-            )}
-          </div>
+          {!preview && !previewError && !manualPendingInput ? (
+            <div className="flex items-center gap-2 text-muted">
+              <Loader2 className="h-4 w-4 animate-spin" /> Calculating distance and fare…
+            </div>
+          ) : previewError ? (
+            <div className="flex items-start gap-2 text-red-600">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{previewError}</span>
+            </div>
+          ) : preview ? (
+            <div className={cn("transition-opacity", previewing && "opacity-50")}>
+              <div className="flex items-center gap-2 font-medium">
+                <span className="truncate">{preview.fromName}</span>
+                <ArrowDown className="h-3.5 w-3.5 shrink-0 -rotate-90 text-muted" />
+                <span className="truncate">{preview.toName}</span>
+              </div>
+              <div className="mt-1 grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Distance</div>
+                  <div className="tabular-nums">{km(preview.km)}</div>
+                </div>
+                <div>
+                  <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">Fare</div>
+                  <div className="font-medium tabular-nums text-brand">{inr(preview.amount)}</div>
+                </div>
+              </div>
+              {(preview.durationMin || preview.source === "MANUAL") && (
+                <p className="mt-1 text-xs text-muted">
+                  {preview.durationMin ? `~${preview.durationMin} min` : ""}
+                  {preview.durationMin && preview.source === "MANUAL" ? " · " : ""}
+                  {preview.source === "MANUAL" ? "distance entered manually" : ""}
+                </p>
+              )}
+            </div>
+          ) : manualPendingInput ? (
+            <p className="text-muted">Enter the distance above to see the fare.</p>
+          ) : null}
         </div>
       )}
-      {preview?.alreadyHere && <p className="text-sm text-amber-600">You are already at this location — pick a different one.</p>}
+
+      {preview?.alreadyHere && (
+        <p className="rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm text-amber-600">
+          You are already at this location — pick a different destination.
+        </p>
+      )}
 
       {msg && (
-        <div className={cn("rounded-md border p-3 text-sm", msg.ok ? "border-green-500/30 bg-green-500/10 text-green-600" : "border-red-500/30 bg-red-500/10 text-red-600")}>
+        <div
+          role="status"
+          aria-live="polite"
+          className={cn(
+            "rounded-md border p-3 text-sm",
+            msg.ok
+              ? "border-green-500/30 bg-green-500/10 text-green-600"
+              : "border-red-500/30 bg-red-500/10 text-red-600",
+          )}
+        >
           {msg.text}
         </div>
       )}
 
-      <button onClick={submit} disabled={pending || preview?.alreadyHere} className="btn-primary w-full">
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} Log This Visit
+      <button onClick={submit} disabled={!canSubmit} className="btn-primary w-full">
+        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+        {pending ? "Logging…" : "Log This Visit"}
       </button>
+
+      {/* ── Today's trip timeline ───────────────────────────────────── */}
+      {employeeId && journey && journey.legs.length > 0 && (
+        <div className="rounded-lg border p-3">
+          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+            <History className="h-3.5 w-3.5" /> Recent Trips Today
+          </div>
+          <ol className="space-y-2">
+            {[...journey.legs].reverse().map((l) => (
+              <li key={l.id} className="flex items-start gap-2.5 text-sm">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-semibold tabular-nums text-brand">
+                  {l.sequence + 1}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">
+                    {l.fromName} <span className="text-muted">→</span> {l.toName}
+                  </span>
+                  {!l.chained && (
+                    <span className="text-xs text-muted">Journey was restarted after this trip</span>
+                  )}
+                </span>
+                <span className="shrink-0 pl-2 text-right tabular-nums">
+                  {km(l.distanceKm)} · {inr(l.amount)}
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold tabular-nums">
+            <span className="flex items-center gap-1.5">
+              <Flag className="h-3.5 w-3.5 text-muted" /> Journey Total
+            </span>
+            <span>{km(journey.totalKm)} · {inr(journey.totalAmount)}</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** One labelled endpoint row in the trip flow. */
+function Endpoint({
+  caption, name, sub, locked, lockNote, muted,
+}: {
+  caption: string;
+  name: string;
+  sub?: string;
+  locked?: boolean;
+  lockNote?: string;
+  muted?: boolean;
+}) {
+  return (
+    <div className="rounded-md border bg-surface p-2.5">
+      <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
+        <MapPin className="h-3 w-3" /> {caption}
+        {locked && <span className="badge bg-bg text-[10px] normal-case tracking-normal text-muted">auto</span>}
+      </div>
+      <div className={cn("mt-0.5 font-semibold leading-tight", muted ? "text-muted" : "text-fg")}>{name}</div>
+      {sub && <div className="mt-0.5 text-xs leading-snug text-muted">{sub}</div>}
+      {lockNote && <div className="mt-0.5 text-xs text-muted">{lockNote}</div>}
     </div>
   );
 }
@@ -299,7 +668,10 @@ function GpsCapture({
 }) {
   const [status, setStatus] = useState<"idle" | "locating" | "geocoding" | "done" | "error">("idle");
   const [error, setError] = useState("");
-  const [detected, setDetected] = useState<{ lat: number; lng: number; address: string; city: string | null; state: string | null; country: string | null; postalCode: string | null } | null>(null);
+  const [detected, setDetected] = useState<{
+    lat: number; lng: number; address: string;
+    city: string | null; state: string | null; country: string | null; postalCode: string | null;
+  } | null>(null);
   const [saveName, setSaveName] = useState("");
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -316,19 +688,24 @@ function GpsCapture({
         setStatus("geocoding");
         try {
           const g = await geocodeCoords(latitude, longitude);
-          setDetected({ lat: latitude, lng: longitude, address: g.address, city: g.city, state: g.state, country: g.country, postalCode: g.postalCode });
+          setDetected({
+            lat: latitude, lng: longitude, address: g.address,
+            city: g.city, state: g.state, country: g.country, postalCode: g.postalCode,
+          });
           setSaveName(g.area || g.city || "New location");
           setStatus("done");
         } catch (e) {
-          setStatus("error"); setError((e as Error).message);
+          setStatus("error"); setError(errorMessage(e));
         }
       },
       (err) => {
         setStatus("error");
         setError(
-          err.code === err.PERMISSION_DENIED ? "Location permission denied. Enable it in your browser settings, or add the location manually."
-          : err.code === err.POSITION_UNAVAILABLE ? "Your location is unavailable right now. Try again or add it manually."
-          : "Could not get your location. Try again.",
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. Enable it in your browser settings, or add the location manually."
+            : err.code === err.POSITION_UNAVAILABLE
+              ? "Your location is unavailable right now. Try again or add it manually."
+              : "Could not get your location. Try again.",
         );
       },
       { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
@@ -347,12 +724,12 @@ function GpsCapture({
       });
       setSaved(true); onSaved();
     } catch (e) {
-      setError((e as Error).message);
+      setError(errorMessage(e));
     } finally { setSaving(false); }
   }
 
   return (
-    <div className="rounded-lg border p-3 space-y-3">
+    <div className="space-y-3 rounded-lg border p-3">
       <div className="flex items-center gap-2 text-sm font-medium">
         <LocateFixed className="h-4 w-4 text-brand" /> Use your current location
       </div>
@@ -370,10 +747,10 @@ function GpsCapture({
       )}
       {status === "error" && (
         <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2 text-sm text-red-600">
-          <AlertTriangle className="h-4 w-4 shrink-0 mt-0.5" />
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
           <div className="flex-1">
             <p>{error}</p>
-            <button type="button" onClick={locate} className="btn-ghost text-xs mt-2">Try again</button>
+            <button type="button" onClick={locate} className="btn-ghost mt-2 text-xs">Try again</button>
           </div>
         </div>
       )}
@@ -385,11 +762,23 @@ function GpsCapture({
               <MapPin className="h-3.5 w-3.5" /> Detected address
             </div>
             <p className="mt-1 leading-snug">{detected.address}</p>
-            <p className="mt-0.5 text-xs text-muted tabular-nums">{detected.lat.toFixed(5)}, {detected.lng.toFixed(5)}</p>
+            <p className="mt-0.5 text-xs tabular-nums text-muted">
+              {detected.lat.toFixed(5)}, {detected.lng.toFixed(5)}
+            </p>
           </div>
 
-          <button type="button" onClick={() => onUse({ kind: "GPS", lat: detected.lat, lng: detected.lng, name: detected.city ? `${detected.city}${detected.state ? `, ${detected.state}` : ""}` : detected.address.split(",").slice(0, 2).join(",") })}
-            className="btn-primary w-full text-sm">
+          <button
+            type="button"
+            onClick={() => onUse({
+              kind: "GPS",
+              lat: detected.lat,
+              lng: detected.lng,
+              name: detected.city
+                ? `${detected.city}${detected.state ? `, ${detected.state}` : ""}`
+                : detected.address.split(",").slice(0, 2).join(","),
+            })}
+            className="btn-primary w-full text-sm"
+          >
             <Check className="h-4 w-4" /> Use This Location
           </button>
 
@@ -399,7 +788,13 @@ function GpsCapture({
               <p className="mt-1 text-sm text-green-600">Saved to your locations.</p>
             ) : (
               <div className="mt-2 flex gap-2">
-                <input className="input flex-1 text-sm" placeholder="Location name" value={saveName} onChange={(e) => setSaveName(e.target.value)} />
+                <input
+                  className="input flex-1 text-sm"
+                  aria-label="Location name"
+                  placeholder="Location name"
+                  value={saveName}
+                  onChange={(e) => setSaveName(e.target.value)}
+                />
                 <button type="button" onClick={saveThis} disabled={saving} className="btn-ghost text-sm">
                   {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />} Save
                 </button>

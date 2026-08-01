@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { UploadCloud, FileText, X, Loader2, RotateCw, Image as ImageIcon } from "lucide-react";
 import { requestBillUpload, discardBill } from "@/app/actions/bills";
 import { cn } from "@/lib/utils";
+import { errorMessage } from "@/lib/errors";
 
 export interface BillMetaValue {
   path: string;
@@ -94,7 +95,7 @@ export function BillUpload({
       onChange({ path: ticket.path, name: f.name, type: f.type, size: f.size });
     } catch (e) {
       setStatus("error");
-      setError((e as Error).message);
+      setError(errorMessage(e));
     }
   }, [employeeId, onChange]);
 

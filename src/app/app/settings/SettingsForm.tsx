@@ -6,6 +6,7 @@ import { Lock } from "lucide-react";
 import { saveAppSettings, lockSettings } from "@/app/actions/settings";
 import { Card, SectionTitle } from "@/components/ui";
 import type { CompanySettings } from "@/lib/settings";
+import { errorMessage } from "@/lib/errors";
 
 export function SettingsForm({ settings }: { settings: CompanySettings }) {
   const [companyName, setCompanyName] = useState(settings.companyName);
@@ -41,7 +42,7 @@ export function SettingsForm({ settings }: { settings: CompanySettings }) {
         });
         setSaved(true);
       } catch (e) {
-        setErr((e as Error).message);
+        setErr(errorMessage(e));
       }
     });
   }

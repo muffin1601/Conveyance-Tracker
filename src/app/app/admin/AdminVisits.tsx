@@ -1,12 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+
 import { deleteVisit } from "@/app/actions/visit";
 import { Card, SectionTitle, Empty } from "@/components/ui";
 import { inr, km } from "@/lib/utils";
 import { LOCATION_TYPES, LOCATION_TYPE_LABEL, type LocationType } from "@/lib/enums";
 import { BillActions } from "@/components/BillActions";
+import { errorMessage } from "@/lib/errors";
+import { Loader2, Trash2 } from "lucide-react";
 
 interface Visit {
   id: string;
@@ -26,13 +28,34 @@ function modeLabel(m: string) {
   return m === "BUSMETRO" ? "Bus/Metro" : m === "CAR" ? "Car" : m === "BIKE" ? "Bike" : m;
 }
 
-export function AdminVisits({ visits, monthAmount }: { visits: Visit[]; monthAmount: number }) {
+export function AdminVisits({
+  visits, monthAmount, shownOf,
+}: {
+  visits: Visit[];
+  monthAmount: number;
+  /** How many of the period's entries this table is showing. */
+  shownOf: { shown: number; total: number };
+}) {
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState<"ALL" | LocationType>("ALL");
+  const [error, setError] = useState("");
+  /** The row being deleted — so only its button shows a spinner. */
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function remove(id: string) {
-    if (!confirm("Delete this entry?")) return;
-    start(() => deleteVisit(id).then(() => {}));
+    if (pending) return; // a second click would fire a duplicate delete
+    if (!confirm("Delete this entry? This cannot be undone.")) return;
+    setError("");
+    setDeletingId(id);
+    start(async () => {
+      try {
+        await deleteVisit(id);
+      } catch (e) {
+        setError(errorMessage(e));
+      } finally {
+        setDeletingId(null);
+      }
+    });
   }
 
   const shown = filter === "ALL" ? visits : visits.filter((v) => v.locationType === filter);
@@ -49,6 +72,15 @@ export function AdminVisits({ visits, monthAmount }: { visits: Visit[]; monthAmo
           <span className="text-sm font-medium tabular-nums">Total: {inr(monthAmount)}</span>
         </div>
       </div>
+      {shownOf.total > shownOf.shown && (
+        <p className="mb-3 rounded-md border bg-bg p-2.5 text-xs text-muted">
+          Showing the {shownOf.shown} most recent of {shownOf.total} entries for this month. The
+          totals above cover all {shownOf.total}. Use the export buttons for the complete list.
+        </p>
+      )}
+      {error && (
+        <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 p-2.5 text-sm text-red-600">{error}</p>
+      )}
       {shown.length === 0 ? (
         <Empty>No entries this month.</Empty>
       ) : (
@@ -86,10 +118,12 @@ export function AdminVisits({ visits, monthAmount }: { visits: Visit[]; monthAmo
                     <button
                       onClick={() => remove(v.id)}
                       disabled={pending}
-                      className="text-muted hover:text-red-600"
+                      className="text-muted hover:text-red-600 disabled:opacity-50"
                       aria-label="Delete entry"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      {deletingId === v.id
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : <Trash2 className="h-4 w-4" />}
                     </button>
                   </td>
                 </tr>

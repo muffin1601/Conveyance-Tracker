@@ -24,36 +24,55 @@ export default async function AdminPage({
   const raw = (await searchParams).period;
   const period = raw && /^\d{4}-\d{2}$/.test(raw) ? raw : monthKey();
 
-  const [empCount, siteCount, journeys, miscExpenses, customLocations] = await Promise.all([
-    prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }),
-    prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }),
-    prisma.journey.findMany({
-      where: { workDate: { startsWith: period } },
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      include: {
-        employee: { select: { name: true } },
-        toSite: { select: { name: true, city: true } },
-        toCustomLocation: { select: { locationName: true } },
-      },
-    }),
-    prisma.miscellaneousExpense.findMany({
-      where: { workDate: { startsWith: period } },
-      orderBy: { createdAt: "desc" },
-      take: 300,
-      include: { employee: { select: { name: true } } },
-    }),
-    prisma.userCustomLocation.findMany({
-      where: { status: "ACTIVE" },
-      orderBy: [{ isGlobal: "asc" }, { createdAt: "desc" }],
-      take: 200,
-      include: { employee: { select: { name: true } } },
-    }),
-  ]);
+  const PAGE_SIZE = 300;
+  const periodFilter = { workDate: { startsWith: period } };
 
-  const convAmount = journeys.reduce((s, j) => s + j.amount, 0);
-  const monthKm = journeys.reduce((s, j) => s + j.distanceKm, 0);
-  const miscAmount = miscExpenses.reduce((s, m) => s + m.amount, 0);
+  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations] =
+    await Promise.all([
+      prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }),
+      prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }),
+      prisma.journey.findMany({
+        where: periodFilter,
+        orderBy: { createdAt: "desc" },
+        take: PAGE_SIZE,
+        include: {
+          employee: { select: { name: true } },
+          toSite: { select: { name: true, city: true } },
+          toCustomLocation: { select: { locationName: true } },
+        },
+      }),
+      // Totals are aggregated in the database over the WHOLE period. Summing
+      // the capped 300-row page understated every figure once a month passed
+      // 300 entries — the headline numbers were silently wrong.
+      prisma.journey.aggregate({
+        where: periodFilter,
+        _sum: { amount: true, distanceKm: true },
+        _count: true,
+      }),
+      prisma.miscellaneousExpense.findMany({
+        where: periodFilter,
+        orderBy: { createdAt: "desc" },
+        take: PAGE_SIZE,
+        include: { employee: { select: { name: true } } },
+      }),
+      prisma.miscellaneousExpense.aggregate({
+        where: periodFilter,
+        _sum: { amount: true },
+        _count: true,
+      }),
+      prisma.userCustomLocation.findMany({
+        where: { status: "ACTIVE" },
+        orderBy: [{ isGlobal: "asc" }, { createdAt: "desc" }],
+        take: 200,
+        include: { employee: { select: { name: true } } },
+      }),
+    ]);
+
+  const convAmount = journeyStats._sum.amount ?? 0;
+  const monthKm = journeyStats._sum.distanceKm ?? 0;
+  const miscAmount = miscStats._sum.amount ?? 0;
+  const journeyTotalCount = journeyStats._count;
+  const miscTotalCount = miscStats._count;
 
   return (
     <div className="space-y-6">
@@ -71,8 +90,8 @@ export default async function AdminPage({
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Conveyance Total" value={inr(convAmount)} sub={`${monthKm.toFixed(0)} km · ${journeys.length} entries`} accent />
-        <StatCard label="Miscellaneous Total" value={inr(miscAmount)} sub={`${miscExpenses.length} entries`} />
+        <StatCard label="Conveyance Total" value={inr(convAmount)} sub={`${monthKm.toFixed(0)} km · ${journeyTotalCount} entries`} accent />
+        <StatCard label="Miscellaneous Total" value={inr(miscAmount)} sub={`${miscTotalCount} entries`} />
         <StatCard label="Grand Total" value={inr(convAmount + miscAmount)} accent />
         <StatCard label="Active Employees / Sites" value={`${empCount} / ${siteCount}`} />
       </div>
@@ -92,6 +111,7 @@ export default async function AdminPage({
           billType: j.billType,
         }))}
         monthAmount={convAmount}
+        shownOf={{ shown: journeys.length, total: journeyTotalCount }}
       />
 
       <AdminMisc

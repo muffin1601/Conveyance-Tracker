@@ -1,6 +1,6 @@
 import "server-only";
 import { cookies, headers } from "next/headers";
-import { SignJWT, jwtVerify } from "jose";
+import { SignJWT } from "jose";
 import bcrypt from "bcryptjs";
 import { prisma } from "./prisma";
 import { ROLE_RANK, type Role } from "./enums";

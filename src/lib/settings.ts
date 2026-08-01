@@ -1,4 +1,5 @@
 import { prisma } from "./prisma";
+import { memo, invalidate } from "./cache";
 import type { VehicleType } from "./enums";
 
 export interface ConveyanceRates {
@@ -44,11 +45,14 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   settingsPin: "1234",
 };
 
-export async function getSettings(): Promise<CompanySettings> {
+const SETTINGS_KEY = "settings:company";
+const SETTINGS_TTL_MS = 60_000;
+
+async function loadSettings(): Promise<CompanySettings> {
   const row = await prisma.setting.findUnique({ where: { key: "company" } });
   if (!row) return DEFAULT_SETTINGS;
   try {
-    const saved = JSON.parse(row.value);
+    const saved = JSON.parse(row.value) as Partial<CompanySettings>;
     // Deep-merge `rates` so any rate key missing from older saved settings
     // (e.g. busMetroPerKm) falls back to its default instead of becoming undefined.
     return {
@@ -61,12 +65,22 @@ export async function getSettings(): Promise<CompanySettings> {
   }
 }
 
+/**
+ * Company settings, memoised for 60 s per server instance. Settings change a
+ * handful of times a year but were being re-read (~450 ms) on every preview,
+ * every logged visit and every page render.
+ */
+export async function getSettings(): Promise<CompanySettings> {
+  return memo(SETTINGS_KEY, SETTINGS_TTL_MS, loadSettings);
+}
+
 export async function saveSettings(s: CompanySettings): Promise<void> {
   await prisma.setting.upsert({
     where: { key: "company" },
     create: { key: "company", value: JSON.stringify(s) },
     update: { value: JSON.stringify(s) },
   });
+  invalidate(SETTINGS_KEY); // never serve a stale rate after an admin edit
 }
 
 export function ratePerKm(rates: ConveyanceRates, vt: VehicleType): number {
