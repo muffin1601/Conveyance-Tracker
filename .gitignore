@@ -8,3 +8,7 @@ dev.db*
 next-env.d.ts
 /build
 .playwright-mcp/
+
+# Tutorial video build artefacts (large; regenerate with npm run video:*)
+video/build/
+video/out/

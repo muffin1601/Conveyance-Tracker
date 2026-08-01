@@ -14,7 +14,15 @@
     "db:seed": "tsx prisma/seed.ts",
     "db:studio": "prisma studio",
     "db:reset": "prisma db push --force-reset && npm run db:seed",
-    "setup": "prisma generate && prisma db push && npm run db:seed"
+    "setup": "prisma generate && prisma db push && npm run db:seed",
+    "video:db": "prisma generate --schema video/schema.sqlite.prisma && prisma db push --schema video/schema.sqlite.prisma --skip-generate",
+    "video:seed": "tsx video/seed-demo.ts",
+    "video:capture": "tsx video/capture.ts",
+    "video:align": "tsx video/align.ts",
+    "video:timeline": "tsx video/timeline.ts",
+    "video:render": "tsx video/render.ts --no-audio",
+    "video:deliverables": "tsx video/deliverables.ts",
+    "video:restore-db": "prisma generate"
   },
   "prisma": {
     "seed": "tsx prisma/seed.ts"
@@ -39,6 +47,7 @@
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.5",
     "eslint-config-next": "^16.2.12",
+    "playwright": "^1.62.1",
     "postcss": "^8.4.49",
     "prisma": "^6.2.1",
     "tailwindcss": "^3.4.17",

@@ -1,0 +1,176 @@
+{
+  "_note": "Hindi narration exactly as supplied to ElevenLabs, split into the 13 sections of the recording. Sentences are the subtitle cue units.",
+  "sections": [
+    {
+      "id": "intro",
+      "chapter": "Conveyance Tracker",
+      "kicker": "परिचय",
+      "sentences": [
+        "नमस्ते! आज मैं आपको बताऊँगी कि Watcon Conveyance Tracker app कैसे use करनी है।",
+        "ये app बहुत आसान है।",
+        "इसमें आप अपनी हर site visit और रोज़ का खर्चा, बस दो मिनट में, record कर सकते हैं।",
+        "ना कोई calculation करनी है, ना कुछ लिखना है।",
+        "distance और पैसा, सब कुछ app अपने आप निकाल देगी।",
+        "चलिए एक एक करके सब कुछ समझते हैं।"
+      ]
+    },
+    {
+      "id": "open",
+      "chapter": "App खोलना",
+      "kicker": "चरण १",
+      "sentences": [
+        "सबसे पहले अपने phone में ये app खोलिए।",
+        "जो link आपको भेजा गया है, उस पर click कीजिए।",
+        "App खुल जाएगी।",
+        "इसे आप phone की home screen पर भी save कर सकते हैं, ताकि रोज़ आसानी से एक tap में खुल जाए।",
+        "ऊपर आपको तीन tab दिखेंगे, Check In, Admin, और Settings.",
+        "आपको सिर्फ पहले वाले से मतलब है, यानी Check In.",
+        "यही main page है, और app खुलते ही यही page सामने आता है।"
+      ]
+    },
+    {
+      "id": "name",
+      "chapter": "अपना नाम चुनिए",
+      "kicker": "चरण २",
+      "sentences": [
+        "अब सबसे पहला काम, अपना नाम चुनना।",
+        "Log Site Visit के नीचे, Your Name वाले box पर tap कीजिए।",
+        "यहाँ सारे staff के नाम की list है।",
+        "इसमें से अपना नाम ढूँढिए और उस पर tap कर दीजिए।",
+        "बस, आपका नाम select हो गया।",
+        "ध्यान रखिए, हमेशा अपना ही नाम select करना है, किसी और का नहीं, वरना पैसा किसी और के नाम पर चढ़ जाएगा।"
+      ]
+    },
+    {
+      "id": "location",
+      "chapter": "Location चुनिए",
+      "kicker": "चरण ३",
+      "sentences": [
+        "अब बताइए कि आप कहाँ जा रहे हैं।",
+        "Where Are You Going वाले box पर tap कीजिए।",
+        "यहाँ सारी sites की list है, client के नाम और शहर के साथ।",
+        "जिस site पर आप जा रहे हैं, उसे list में से ढूँढ कर चुन लीजिए।",
+        "और एक ज़रूरी बात, आपके दिन की पहली trip हमेशा Watcon Head Office से गिनी जाती है।",
+        "आपको कुछ भरना नहीं है, app खुद समझ जाती है कि आप कहाँ से चले।"
+      ]
+    },
+    {
+      "id": "gps",
+      "chapter": "GPS से location",
+      "kicker": "अगर site list में न हो",
+      "sentences": [
+        "अब मान लीजिए, आप जिस जगह जा रहे हैं, वो list में है ही नहीं।",
+        "तो घबराइए मत।",
+        "ऐसे में आप GPS use कर सकते हैं।",
+        "GPS वाला option चुनिए, और phone की location on कर दीजिए।",
+        "जब phone पूछे कि location allow करनी है या नहीं, तो Allow दबा दीजिए।",
+        "बस, app अपने आप आपकी सही जगह पकड़ लेगी, और वहीं से आपका distance और पैसा calculate होगा।",
+        "एक बात का ध्यान रखिए, GPS हमेशा उसी जगह पर पहुँच कर use कीजिए, जिस site पर आप गए हैं, ताकि location एकदम सही record हो।"
+      ]
+    },
+    {
+      "id": "transport",
+      "chapter": "Transport चुनिए",
+      "kicker": "चरण ४",
+      "sentences": [
+        "अब बताइए कि आप किस चीज़ से जा रहे हैं।",
+        "यहाँ तीन option हैं, Bike, Car, और Bus या Metro.",
+        "Bike से जा रहे हैं तो चार रुपये per kilometer मिलेंगे।",
+        "Car से ग्यारह रुपये per kilometer.",
+        "और Bus या Metro से तीन रुपये per kilometer, या जो actual ticket का खर्चा हो।",
+        "जिससे आप जा रहे हैं, बस उस पर tap कर दीजिए।"
+      ]
+    },
+    {
+      "id": "log",
+      "chapter": "Visit log कीजिए",
+      "kicker": "चरण ५",
+      "sentences": [
+        "अब आखिरी step, नीचे Log This Visit वाले button पर tap कीजिए।",
+        "बस हो गया! आपकी visit record हो गई।",
+        "App अपने आप distance निकाल लेगी, कितने kilometer हुए, और उस हिसाब से पैसा भी खुद calculate कर देगी।",
+        "आपको कुछ भी जोड़ना घटाना नहीं है।"
+      ]
+    },
+    {
+      "id": "chain",
+      "chapter": "एक site से दूसरी site",
+      "kicker": "पूरे दिन की visits",
+      "sentences": [
+        "अब सबसे काम की बात।",
+        "दिन भर में आप एक site पर तो रुकते नहीं, एक के बाद एक कई sites पर जाते हैं।",
+        "तो समझिए कैसे चलता है।",
+        "आपकी पहली trip, Head Office से पहली site तक।",
+        "मान लीजिए ये हुई A से B.",
+        "अब B पर काम खत्म हुआ, और आपको अगली site जाना है।",
+        "तो app में फिर से वही करना है।",
+        "नाम चुनो, अगली site चुनो, transport चुनो, और Log This Visit दबा दो।",
+        "App खुद समझ जाएगी कि आप B से चले हैं, और B से C तक का distance गिनेगी।",
+        "अब C से D जाना है? फिर वही चार steps.",
+        "App हर बार आपकी पिछली location से ही अगली location तक का हिसाब लगाएगी।",
+        "इसी तरह आप दिन में चाहे चार sites जाएँ या दस, हर बार बस वही चार steps, और सारा हिसाब अपने आप जुड़ता जाएगा।",
+        "आपको Head Office वापस जाने की, या kilometer याद रखने की, कोई ज़रूरत नहीं है।"
+      ]
+    },
+    {
+      "id": "reset",
+      "chapter": "Trip reset करना",
+      "kicker": "सोच समझ कर",
+      "sentences": [
+        "अब समझिए reset करना।",
+        "अगर आप अपनी trip दोबारा शुरू करना चाहते हैं, यानी चाहते हैं कि अगली visit फिर से Head Office से गिनी जाए, तो Reset Trip वाले option पर tap कीजिए।",
+        "इससे आपकी trip की chain reset हो जाएगी, और अगली entry फिर से Head Office से शुरू होगी।",
+        "ये तब काम आता है जब आप office वापस आ गए हों और फिर से नई trip शुरू करनी हो, या फिर कोई entry गलत हो गई हो और आप नए सिरे से शुरू करना चाहें।",
+        "लेकिन ध्यान रखिए, reset सोच समझ कर कीजिए, बिना वजह reset मत कीजिए, वरना आपका हिसाब गड़बड़ हो सकता है।"
+      ]
+    },
+    {
+      "id": "summary",
+      "chapter": "Today's Summary",
+      "kicker": "दिन का हिसाब",
+      "sentences": [
+        "अब नीचे scroll कीजिए।",
+        "यहाँ Today's Summary में आपका पूरा दिन दिखेगा।",
+        "किस किस site पर गए, हर trip में कितने kilometer चले, किस से गए, bike, car या metro, और हर trip का कितना पैसा बना, सब कुछ line by line लिखा होगा।",
+        "नीचे Total Conveyance दिखेगा, यानी दिन भर की सारी trips का जोड़।",
+        "और सबसे नीचे Grand Total, यानी conveyance और बाकी खर्चे मिला कर, आज का पूरा हिसाब।"
+      ]
+    },
+    {
+      "id": "bill",
+      "chapter": "Bill add करना",
+      "kicker": "record पक्का",
+      "sentences": [
+        "अगर आपके पास कोई bill या ticket है, जैसे metro का ticket या bus का ticket, तो Summary में उस entry के पास Add bill पर tap कीजिए, और bill की photo खींच कर upload कर दीजिए।",
+        "इससे आपका record पक्का रहेगा, और payment में कोई दिक्कत नहीं आएगी।"
+      ]
+    },
+    {
+      "id": "misc",
+      "chapter": "Miscellaneous Expenses",
+      "kicker": "दूसरे खर्चे",
+      "sentences": [
+        "अब एक और काम की चीज़।",
+        "अगर रास्ते में कोई और खर्चा हुआ है, जो आने जाने का नहीं है, जैसे parking, toll, या खाना, तो उसे Miscellaneous Expenses में डालिए।",
+        "यहाँ भी पहले अपना नाम select कीजिए, फिर खर्चा भर दीजिए।",
+        "ये खर्चा आपकी conveyance से अलग रखा जाता है, लेकिन आपके दिन के summary और report में जुड़ जाता है, ताकि पूरा हिसाब एक जगह दिखे।"
+      ]
+    },
+    {
+      "id": "ending",
+      "chapter": "बस इतना ही!",
+      "kicker": "याद रखिए",
+      "sentences": [
+        "तो बस, इतना ही करना है! एक बार फिर से याद कर लीजिए।",
+        "हर visit पर चार काम, नाम चुनो, location चुनो, transport चुनो, और Log This Visit दबाओ।",
+        "Site list में ना हो, तो GPS use करो।",
+        "नई trip शुरू करनी हो, तो Reset Trip.",
+        "Bill हो, तो photo upload करो।",
+        "और parking, toll, खाने जैसा खर्चा हो, तो Miscellaneous Expenses में डालो।",
+        "हर visit के time, उसी time entry करते जाइए, बाद के लिए मत छोड़िए, ताकि आपका हिसाब एकदम सही रहे और पैसा time पर मिले।",
+        "कोई भी दिक्कत हो, तो अपने office में बात कर लीजिए।",
+        "धन्यवाद!"
+      ]
+    }
+  ]
+}

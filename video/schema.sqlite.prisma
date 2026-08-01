@@ -1,0 +1,428 @@
+// Watcon Conveyance Tracker — production schema.
+// Local dev uses SQLite for zero-config runnability. For production, change
+// `provider` to "postgresql" and point DATABASE_URL at your Postgres instance;
+// all models below are Postgres-compatible (enums are modelled as String for
+// SQLite portability — see lib/enums.ts for the canonical value sets).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+// ──────────────────────────────────────────────────────────────
+// Identity, RBAC
+// ──────────────────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  name          String
+  role          String    @default("EMPLOYEE") // SUPER_ADMIN | ADMIN | MANAGER | EMPLOYEE
+  isActive      Boolean   @default(true)
+  lastLoginAt   DateTime?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  deletedAt     DateTime?
+
+  employee      Employee?
+  sessions      Session[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  approvals     Approval[]   @relation("ApprovalActor")
+
+  @@index([role])
+  @@index([email])
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  userId    String
+  token     String   @unique
+  ip        String?
+  userAgent String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([token])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Core domain
+// ──────────────────────────────────────────────────────────────
+
+model Employee {
+  id           String   @id @default(cuid())
+  employeeCode String   @unique // e.g. WAT-0001
+  name         String
+  phone        String?
+  email        String?  @unique
+  department   String
+  designation  String
+  vehicleType  String   @default("BIKE") // BIKE | CAR | CAB | AUTO | METRO | BUS
+  status       String   @default("ACTIVE") // ACTIVE | INACTIVE
+  managerId    String?
+  userId       String?  @unique
+
+  manager   Employee?  @relation("Reports", fields: [managerId], references: [id])
+  reports   Employee[] @relation("Reports")
+  user      User?      @relation(fields: [userId], references: [id])
+
+  journeys  Journey[]
+  visits    SiteVisit[]
+  claims    Claim[]
+  customLocations UserCustomLocation[]
+  miscExpenses    MiscellaneousExpense[]
+  journeyResets   JourneyReset[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([department])
+  @@index([managerId])
+  @@index([status])
+  // Serves the employee picker: WHERE status = 'ACTIVE' ORDER BY name.
+  @@index([status, name])
+  @@index([name])
+}
+
+model Site {
+  id             String  @id @default(cuid())
+  code           String  @unique // SITE-001
+  name           String
+  address        String
+  pincode        String?
+  city           String?
+  state          String?
+  region         String?
+  zone           String?
+  client         String?
+  projectManager String?
+  latitude       Float
+  longitude      Float
+  geofenceRadius Int     @default(200) // metres
+  isOffice       Boolean @default(false)
+  status         String  @default("ACTIVE") // ACTIVE | INACTIVE
+
+  visits    SiteVisit[]
+  fromLegs  Journey[]  @relation("FromSite")
+  toLegs    Journey[]  @relation("ToSite")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  deletedAt DateTime?
+
+  @@index([status])
+  @@index([city])
+  @@index([pincode])
+  // Serves the location picker: WHERE status = 'ACTIVE' AND isOffice = false
+  // ORDER BY name, and the head-office lookup on every visit.
+  @@index([status, isOffice, name])
+  @@index([name])
+  @@index([isOffice])
+}
+
+// A SiteVisit is a single punch-in/punch-out at a site.
+model SiteVisit {
+  id          String    @id @default(cuid())
+  employeeId  String
+  siteId      String
+  workDate    String // YYYY-MM-DD (local) for fast daily grouping
+
+  // Punch-in
+  checkInAt   DateTime  @default(now())
+  inLatitude  Float
+  inLongitude Float
+  inAccuracy  Float?
+  inDistance  Float // metres from site centroid at check-in (server verified)
+
+  // Punch-out
+  checkOutAt   DateTime?
+  outLatitude  Float?
+  outLongitude Float?
+  outAccuracy  Float?
+  durationMin  Int? // computed on check-out
+
+  deviceInfo  String?
+  ipAddress   String?
+  status      String    @default("OPEN") // OPEN | CLOSED
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  site     Site     @relation(fields: [siteId], references: [id])
+
+  // The journey leg that ends at this visit's site (the trip taken to get here)
+  arrivalLeg Journey? @relation("ArrivalVisit")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, workDate])
+  @@index([siteId])
+  @@index([status])
+}
+
+// A Journey is one leg between two points (office/site -> site/office).
+model Journey {
+  id          String  @id @default(cuid())
+  employeeId  String
+  workDate    String
+  // Endpoints. A leg's from/to is EITHER a master Site OR a personal
+  // UserCustomLocation (GPS or manual). Exactly one FK of each pair is set.
+  // Existing rows always have the Site FKs populated (backward compatible).
+  fromSiteId  String?
+  toSiteId    String?
+  fromCustomLocationId String?
+  toCustomLocationId   String?
+  // Denormalised endpoint labels so readers/exports never need to branch on
+  // which kind of endpoint it was. Populated for every new leg.
+  fromName    String?
+  toName      String?
+  // Endpoint coordinate snapshots — populated for every new leg so the next
+  // leg's source (= this leg's destination) resolves without a Site/custom
+  // join. Null on legs created before this feature (fall back to Site coords).
+  fromLat     Float?
+  fromLng     Float?
+  toLat       Float?
+  toLng       Float?
+  // How the destination was chosen: MASTER (Site), GPS (geolocated), CUSTOM
+  // (manually-added personal location). Used for report filtering.
+  locationType String @default("MASTER") // MASTER | GPS | CUSTOM
+  manualDistance Boolean @default(false)  // true when distance was entered by hand (API unavailable)
+  sequence    Int // order within the day (0 = first leg from office)
+
+  distanceKm  Float // chosen distance used for reimbursement
+  roadKm      Float? // road distance from provider
+  haversineKm Float // straight-line fallback
+  durationMin Int?
+  source      String  @default("HAVERSINE") // GOOGLE | OSRM | HAVERSINE | CACHE | MANUAL
+  vehicleType String
+  amount      Float   @default(0) // computed reimbursable amount for this leg
+
+  // Optional bill attachment (Supabase Storage, private bucket) — same scheme
+  // as MiscellaneousExpense. Path + metadata only.
+  billPath       String?
+  billName       String?
+  billType       String?
+  billSize       Int?
+  billUploadedAt DateTime?
+  billUploadedBy String?
+
+  arrivalVisitId String?   @unique
+  arrivalVisit   SiteVisit? @relation("ArrivalVisit", fields: [arrivalVisitId], references: [id])
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  fromSite Site?    @relation("FromSite", fields: [fromSiteId], references: [id])
+  toSite   Site?    @relation("ToSite", fields: [toSiteId], references: [id])
+  fromCustomLocation UserCustomLocation? @relation("FromCustom", fields: [fromCustomLocationId], references: [id])
+  toCustomLocation   UserCustomLocation? @relation("ToCustom", fields: [toCustomLocationId], references: [id])
+
+  claimItem ClaimItem?
+
+  createdAt DateTime @default(now())
+
+  @@index([employeeId, workDate])
+  @@index([workDate])
+  @@index([fromSiteId, toSiteId])
+  @@index([locationType])
+  // Journey chaining reads the highest-sequence leg of an employee's day on
+  // every preview and every logged visit — this makes it an index-only seek.
+  @@index([employeeId, workDate, sequence])
+  @@index([createdAt])
+}
+
+// Marks the point at which an employee manually restarted their day's journey
+// chain ("Reset Journey"). The next leg after a reset starts from the head
+// office again; legs at or below `afterSequence` stay untouched so history,
+// reports and exports are unaffected.
+model JourneyReset {
+  id            String   @id @default(cuid())
+  employeeId    String
+  workDate      String // YYYY-MM-DD
+  afterSequence Int // legs with sequence <= this are excluded from chaining
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, workDate])
+}
+
+// Memoised distance/duration between two coordinate pairs.
+model DistanceCache {
+  id          String  @id @default(cuid())
+  key         String  @unique // "lat,lng|lat,lng" rounded to 5dp
+  roadKm      Float
+  haversineKm Float
+  durationMin Int
+  source      String  @default("GOOGLE")
+  createdAt   DateTime @default(now())
+
+  @@index([key])
+}
+
+// A personal, reusable location captured by an employee — either geolocated
+// (GPS + reverse-geocode) or entered manually. Private to the owning employee
+// until an admin promotes it to a global location (isGlobal = true).
+model UserCustomLocation {
+  id           String  @id @default(cuid())
+  employeeId   String
+  locationName String
+  address      String?
+  landmark     String?
+  latitude     Float?
+  longitude    Float?
+  city         String?
+  state        String?
+  country      String?
+  postalCode   String?
+  source       String  @default("GPS") // GPS | MANUAL
+  isGlobal     Boolean @default(false)  // admin-approved for everyone
+  approvedAt   DateTime?
+  status       String  @default("ACTIVE") // ACTIVE | INACTIVE
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  fromLegs Journey[] @relation("FromCustom")
+  toLegs   Journey[] @relation("ToCustom")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, status])
+  @@index([isGlobal])
+}
+
+// A miscellaneous (non-conveyance) expense — parking, toll, food, etc. Kept
+// entirely separate from Journey so conveyance calculations are unaffected;
+// surfaced alongside conveyance only in day summaries and reports.
+model MiscellaneousExpense {
+  id             String  @id @default(cuid())
+  employeeId     String
+  workDate       String  // YYYY-MM-DD — groups into the same day summary as journeys
+  category       String  // PARKING | TOLL | FOOD | TEA | REPAIR | WASH | FUEL | HOTEL | COURIER | OTHER
+  customCategory String? // free text, required when category = OTHER
+  amount         Float
+  description    String?
+  notes          String?
+
+  // Bill attachment (Supabase Storage, private bucket). Only the path +
+  // metadata are stored — never the binary, never a permanent URL (access is
+  // via short-lived signed URLs minted server-side).
+  billPath       String? // e.g. WAT-0001/2026/07/<uuid>.pdf
+  billName       String? // original filename
+  billType       String? // mime type
+  billSize       Int?    // bytes
+  billUploadedAt DateTime?
+  billUploadedBy String? // employeeId that uploaded
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([employeeId, workDate])
+  @@index([workDate])
+  @@index([category])
+  @@index([createdAt])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Claims & approvals
+// ──────────────────────────────────────────────────────────────
+
+model Claim {
+  id          String   @id @default(cuid())
+  employeeId  String
+  periodMonth String // YYYY-MM
+  totalKm     Float    @default(0)
+  totalAmount Float    @default(0)
+  status      String   @default("DRAFT") // DRAFT | SUBMITTED | MANAGER_APPROVED | ADMIN_APPROVED | FINANCE_APPROVED | PAID | REJECTED
+  submittedAt DateTime?
+  paidAt      DateTime?
+
+  employee  Employee    @relation(fields: [employeeId], references: [id])
+  items     ClaimItem[]
+  approvals Approval[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([employeeId, periodMonth])
+  @@index([status])
+}
+
+model ClaimItem {
+  id        String  @id @default(cuid())
+  claimId   String
+  journeyId String  @unique
+  km        Float
+  amount    Float
+
+  claim   Claim   @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  journey Journey @relation(fields: [journeyId], references: [id])
+
+  @@index([claimId])
+}
+
+model Approval {
+  id        String   @id @default(cuid())
+  claimId   String
+  actorId   String
+  stage     String // MANAGER | ADMIN | FINANCE
+  decision  String // APPROVED | REJECTED
+  note      String?
+  createdAt DateTime @default(now())
+
+  claim Claim @relation(fields: [claimId], references: [id], onDelete: Cascade)
+  actor User  @relation("ApprovalActor", fields: [actorId], references: [id])
+
+  @@index([claimId])
+}
+
+// ──────────────────────────────────────────────────────────────
+// Config, audit, notifications
+// ──────────────────────────────────────────────────────────────
+
+model Setting {
+  key       String   @id
+  value     String // JSON-encoded
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String?
+  action    String // CREATE | UPDATE | DELETE | APPROVE | LOGIN | PUNCH_IN | PUNCH_OUT | ...
+  entity    String // Site | Employee | Claim | Session | ...
+  entityId  String?
+  meta      String? // JSON
+  ip        String?
+  createdAt DateTime @default(now())
+
+  user User? @relation(fields: [userId], references: [id])
+
+  @@index([action])
+  @@index([entity, entityId])
+  @@index([createdAt])
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  type      String // FORGOT_PUNCHOUT | APPROVAL_PENDING | CLAIM_APPROVED | CLAIM_REJECTED | REMINDER
+  title     String
+  body      String
+  link      String?
+  readAt    DateTime?
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, readAt])
+}
