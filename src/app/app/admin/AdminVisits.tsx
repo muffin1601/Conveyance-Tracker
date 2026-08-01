@@ -49,7 +49,10 @@ export function AdminVisits({
     setDeletingId(id);
     start(async () => {
       try {
-        await deleteVisit(id);
+        const r = await deleteVisit(id);
+        // The action reports expected failures in its result; a thrown error
+        // would be redacted by Next in production and never reach the user.
+        if (!r.ok) setError(r.error);
       } catch (e) {
         setError(errorMessage(e));
       } finally {

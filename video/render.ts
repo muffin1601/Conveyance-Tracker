@@ -28,8 +28,8 @@ const arg = (k: string, d?: string) => {
 const flag = (k: string) => argv.includes(`--${k}`);
 
 const AUDIO = join(
-  process.cwd(),
-  "ElevenLabs_2026-08-01T08_29_35_Anvi - Warm, Emotional Girlfriend_pvc_sp83_s59_sb26_se0_b_m2.mp3",
+  process.cwd(), "video",
+  "ElevenLabs_2026-08-01T10_33_04_Anvi - Warm, Emotional Girlfriend_pvc_sp88_s59_sb26_se0_b_m2.mp3",
 );
 
 const timeline = JSON.parse(readFileSync(join(BUILD, "timeline.json"), "utf8"));

@@ -289,11 +289,24 @@
   }
 
   // ── Subtitles ────────────────────────────────────────────────────
+  /** Break a cue onto at most two balanced lines so the band stays compact. */
+  function wrapCue(text, max = 34) {
+    if (text.length <= max) return text;
+    const words = text.split(" ");
+    let best = null;
+    for (let i = 1; i < words.length; i++) {
+      const a = words.slice(0, i).join(" "), b = words.slice(i).join(" ");
+      const score = Math.abs(a.length - b.length) + Math.max(0, Math.max(a.length, b.length) - max) * 4;
+      if (!best || score < best.score) best = { score, text: a + String.fromCharCode(10) + b };
+    }
+    return best ? best.text : text;
+  }
+
   function drawSubtitle(now) {
     if (!TL.subtitles || !TL.burnSubtitles) return;
     const cue = TL.subtitles.find((c) => now >= c.start && now < c.end);
     if (!cue) return;
-    el.sub.textContent = cue.text;
+    el.sub.querySelector("span").textContent = wrapCue(cue.text);
     el.sub.style.opacity = "1";
   }
 

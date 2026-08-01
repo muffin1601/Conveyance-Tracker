@@ -26,7 +26,8 @@ export function LocationApprovals({ locations }: { locations: Loc[] }) {
     setError("");
     start(async () => {
       try {
-        await approveGlobalLocation(id, approve);
+        const r = await approveGlobalLocation(id, approve);
+        if (!r.ok) setError(r.error);
       } catch (e) {
         setError(errorMessage(e));
       }

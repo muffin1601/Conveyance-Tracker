@@ -47,9 +47,21 @@ function plan() {
   return { total, segs };
 }
 
-function run(cmd: string, args: string[], label: string): Promise<void> {
+function run(
+  cmd: string,
+  args: string[],
+  label: string,
+  opts: { cwd?: string; shell?: boolean } = {},
+): Promise<void> {
   return new Promise((res, rej) => {
-    const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], shell: process.platform === "win32" });
+    // ffmpeg is invoked WITHOUT a shell: `shell: true` concatenates argv
+    // unescaped, and this project's path contains a space, which silently
+    // broke the concat step. Only `npx` needs the shell on Windows.
+    const p = spawn(cmd, args, {
+      stdio: ["ignore", "pipe", "pipe"],
+      cwd: opts.cwd,
+      shell: opts.shell ?? (process.platform === "win32"),
+    });
     let last = "";
     p.stdout.on("data", (d) => { last = String(d).trim().split("\n").pop() ?? last; });
     p.stderr.on("data", (d) => { last = String(d).trim().split("\n").pop() ?? last; });
@@ -88,10 +100,12 @@ async function main() {
   );
 
   // ── Concat (stream copy) ──────────────────────────────────────────
+  // Relative filenames, with ffmpeg run from SEG — keeps every path in the
+  // concat step free of the space in this project's folder name.
   const list = join(SEG, "list.txt");
   writeFileSync(
     list,
-    segs.map((s) => `file '${join(SEG, `seg-${String(s.i).padStart(2, "0")}.mp4`).replace(/\\/g, "/")}'`).join("\n"),
+    segs.map((s) => `file 'seg-${String(s.i).padStart(2, "0")}.mp4'`).join("\n") + "\n",
   );
   for (const s of segs) {
     const f = join(SEG, `seg-${String(s.i).padStart(2, "0")}.mp4`);
@@ -101,10 +115,10 @@ async function main() {
   console.log("concatenating (stream copy) …");
   await run("ffmpeg", [
     "-y", "-hide_banner", "-loglevel", "error",
-    "-f", "concat", "-safe", "0", "-i", list,
+    "-f", "concat", "-safe", "0", "-i", "list.txt",
     "-c", "copy", "-movflags", "+faststart",
     join(OUT, OUT_NAME),
-  ], "concat");
+  ], "concat", { cwd: SEG, shell: false });
 
   console.log(`\n✔ ${join(OUT, OUT_NAME)}  (${((Date.now() - t0) / 1000 / 60).toFixed(1)} min)`);
 }

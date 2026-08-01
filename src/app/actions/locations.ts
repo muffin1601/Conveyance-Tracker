@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { reverseGeocode, isValidCoord } from "@/lib/geocode";
 import { haversineMeters } from "@/lib/geo";
 import { isSettingsUnlocked } from "./settings";
+import { attempt, ok, fail, type ActionResult } from "@/lib/result";
 
 /**
  * Reverse-geocode the browser's current GPS fix into a structured address.
@@ -128,13 +129,20 @@ export async function listCustomLocationsForAdmin() {
   });
 }
 
-export async function approveGlobalLocation(id: string, approve: boolean) {
-  if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
-  await prisma.userCustomLocation.update({
-    where: { id },
-    data: { isGlobal: approve, approvedAt: approve ? new Date() : null },
-  });
-  revalidatePath("/app");
-  revalidatePath("/app/admin");
-  return { ok: true };
+export async function approveGlobalLocation(id: string, approve: boolean): Promise<ActionResult> {
+  return attempt(async () => {
+    if (!(await isSettingsUnlocked())) {
+      return fail("Admin is locked. Enter the PIN again and retry.");
+    }
+    const existing = await prisma.userCustomLocation.findUnique({ where: { id }, select: { id: true } });
+    if (!existing) return fail("That location no longer exists.");
+
+    await prisma.userCustomLocation.update({
+      where: { id },
+      data: { isGlobal: approve, approvedAt: approve ? new Date() : null },
+    });
+    revalidatePath("/app");
+    revalidatePath("/app/admin");
+    return ok();
+  }, "approveGlobalLocation");
 }

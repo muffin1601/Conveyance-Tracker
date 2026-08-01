@@ -13,8 +13,10 @@ import {
   type JourneyState,
 } from "@/app/actions/visit";
 import { geocodeCoords, listMyLocations, saveCustomLocation } from "@/app/actions/locations";
+import { setActiveEmployee } from "@/app/actions/session";
 import { Combobox, type ComboOption } from "@/components/Combobox";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
+import { useRouter } from "next/navigation";
 import type { TravelMode } from "@/lib/travel";
 import { cn, inr, km } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
@@ -53,15 +55,17 @@ interface Preview {
 }
 
 export function CheckinForm({
-  employees, sites, rates, officeName, officeAddress,
+  employees, sites, rates, officeName, officeAddress, initialEmployeeId = "",
 }: {
+  /** Restored from the device cookie so a returning user is already selected. */
+  initialEmployeeId?: string;
   employees: Employee[];
   sites: Site[];
   rates: Record<TravelMode, number>;
   officeName: string;
   officeAddress: string;
 }) {
-  const [employeeId, setEmployeeId] = useState("");
+  const [employeeId, setEmployeeId] = useState(initialEmployeeId);
   const [myLocations, setMyLocations] = useState<CustomLoc[]>([]);
   const [journey, setJourney] = useState<JourneyState | null>(null);
   const [journeyLoading, setJourneyLoading] = useState(false);
@@ -80,6 +84,7 @@ export function CheckinForm({
   const [panel, setPanel] = useState<"none" | "gps">("none");
 
   const { recent, remember } = useRecentLocations(employeeId);
+  const router = useRouter();
 
   const fareNum = parseFloat(fare);
   const fareInvalid = fare.trim() !== "" && !(fareNum >= 0);
@@ -196,6 +201,9 @@ export function CheckinForm({
 
   const onSelectEmployee = useCallback((id: string) => {
     setEmployeeId(id);
+    // Persist who this device belongs to, then refresh so Today's Summary
+    // re-renders scoped to this employee instead of showing everyone.
+    void setActiveEmployee(id).then(() => router.refresh()).catch(() => {});
     setDest(null);
     setPreview(null);
     setPreviewError(null);
@@ -204,7 +212,7 @@ export function CheckinForm({
     setUseManual(false);
     setManualKm("");
     setFare("");
-  }, []);
+  }, [router]);
 
   const destForApi = useCallback((d: Dest) => {
     if (d.kind === "SITE") return { kind: "SITE" as const, siteId: d.siteId };
@@ -295,7 +303,8 @@ export function CheckinForm({
     if (!confirm("Restart the journey? Your next trip will start from the office again. Trips already logged are kept.")) return;
     startReset(async () => {
       try {
-        await resetJourney(employeeId);
+        const r = await resetJourney(employeeId);
+        if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
         setDest(null); setPreview(null); setUseManual(false); setManualKm("");
         setMsg({ ok: true, text: `Journey restarted — your next trip starts from ${officeName}.` });
         await refreshJourney(employeeId);

@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { getActiveEmployees, getActiveSites, getHeadOffice } from "@/lib/masterData";
+import { getActiveEmployeeId } from "@/app/actions/session";
 import { todayKey, inr, km, fmtTime } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
@@ -33,12 +34,16 @@ function modeLabel(m: string): string {
  * delay, and it grows with every visit ever logged.
  */
 async function VisitEntry() {
-  const [employees, sites, office, settings] = await Promise.all([
+  const [employees, sites, office, settings, activeEmployeeId] = await Promise.all([
     getActiveEmployees(),
     getActiveSites(),
     getHeadOffice(),
     getSettings(),
+    getActiveEmployeeId(),
   ]);
+  // Only pre-select someone who is still on the active roster.
+  const initialEmployeeId =
+    activeEmployeeId && employees.some((e) => e.id === activeEmployeeId) ? activeEmployeeId : "";
   const uploadsEnabled = isUploadConfigured();
 
   return (
@@ -50,6 +55,7 @@ async function VisitEntry() {
           starts from your last destination. Distance &amp; amount are calculated automatically.
         </p>
         <CheckinForm
+          initialEmployeeId={initialEmployeeId}
           employees={employees}
           sites={sites}
           officeName={office?.name ?? "Head Office"}
@@ -64,18 +70,37 @@ async function VisitEntry() {
           Record non-conveyance expenses — parking, toll, food, and more. These are kept separate
           from conveyance but appear in your day summary and reports.
         </p>
-        <MiscExpenses employees={employees} uploadsEnabled={uploadsEnabled} />
+        <MiscExpenses initialEmployeeId={initialEmployeeId} employees={employees} uploadsEnabled={uploadsEnabled} />
       </Card>
     </>
   );
 }
 
-/** Today's activity for everyone, grouped into one timeline per employee. */
+/**
+ * Today's activity for the person using this device only.
+ *
+ * Previously this listed every employee's trips and expenses to anyone who
+ * opened the page. It is now scoped to whoever is selected in the form above
+ * (remembered in a cookie), so you only ever see your own day. Managers see
+ * everybody through the PIN-gated Admin tab, which is unchanged.
+ */
 async function TodaySummary() {
   const workDate = todayKey();
+  const employeeId = await getActiveEmployeeId();
+
+  // No name chosen yet — show nothing rather than everyone's data.
+  if (!employeeId) {
+    return (
+      <Empty>
+        Select your name above to see your trips and expenses for today.
+      </Empty>
+    );
+  }
+
+  const scope = { workDate, employeeId };
   const [journeys, miscExpenses] = await Promise.all([
     prisma.journey.findMany({
-      where: { workDate },
+      where: scope,
       orderBy: { sequence: "asc" },
       include: {
         employee: { select: { id: true, name: true } },
@@ -86,7 +111,7 @@ async function TodaySummary() {
       },
     }),
     prisma.miscellaneousExpense.findMany({
-      where: { workDate },
+      where: scope,
       include: { employee: { select: { id: true, name: true } } },
     }),
   ]);

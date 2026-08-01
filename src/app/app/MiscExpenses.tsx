@@ -3,6 +3,7 @@
 import { useEffect, useState, useTransition, useCallback, useMemo } from "react";
 import { Loader2, Plus, Pencil, Trash2, Check, X, Receipt, Paperclip } from "lucide-react";
 import { addMiscExpense, updateMiscExpense, deleteMiscExpense, listMiscExpenses } from "@/app/actions/misc";
+import { setActiveEmployee } from "@/app/actions/session";
 import { MISC_CATEGORIES, MISC_CATEGORY_LABEL, type MiscCategory } from "@/lib/enums";
 import { Combobox, type ComboOption } from "@/components/Combobox";
 import { Skeleton } from "@/components/ui";
@@ -22,8 +23,15 @@ function catLabel(e: Expense) {
   return e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
 }
 
-export function MiscExpenses({ employees, uploadsEnabled }: { employees: Employee[]; uploadsEnabled: boolean }) {
-  const [employeeId, setEmployeeId] = useState("");
+export function MiscExpenses({
+  employees, uploadsEnabled, initialEmployeeId = "",
+}: {
+  employees: Employee[];
+  uploadsEnabled: boolean;
+  /** Restored from the device cookie so a returning user is already selected. */
+  initialEmployeeId?: string;
+}) {
+  const [employeeId, setEmployeeId] = useState(initialEmployeeId);
   const [items, setItems] = useState<Expense[]>([]);
   const [loading, setLoading] = useState(false);
   const [editing, setEditing] = useState<Expense | null>(null);
@@ -61,7 +69,10 @@ export function MiscExpenses({ employees, uploadsEnabled }: { employees: Employe
           id="misc-emp"
           options={employeeOptions}
           value={employeeId}
-          onChange={(id) => { setEmployeeId(id); setShowForm(false); setEditing(null); }}
+          onChange={(id) => {
+            setEmployeeId(id); setShowForm(false); setEditing(null);
+            void setActiveEmployee(id).catch(() => {});
+          }}
           placeholder="— Select your name —"
           searchPlaceholder="Search by name or role…"
           emptyMessage="No employee matches that search."

@@ -111,14 +111,58 @@ function main() {
   // drift there and prefer the longer gaps.
   const longGaps = gaps.filter((g) => g.dur >= 0.95).map((g) => (g.start + g.end) / 2);
   const sectionStarts: number[] = [];
-  let idx = 0;
   for (let i = 0; i < sections.length; i++) {
     const first = rough.find((r) => r.sectionIdx === i)!;
-    const t = i === 0 ? 0 : snap(first.start, longGaps.length ? longGaps : points, 6.5);
-    sectionStarts.push(t);
-    idx++;
+    if (i === 0) { sectionStarts.push(0); continue; }
+    // Prefer a real pause, but only a nearby one. A wide search can drag a
+    // boundary onto the wrong pause and starve the section either side of it
+    // — that is how a 95-character sentence ended up with 2.8 seconds.
+    const long = snap(first.start, longGaps, 2.5);
+    sectionStarts.push(long !== first.start ? long : snap(first.start, points, 1.2));
   }
-  void idx;
+
+  /**
+   * Snapping must not distort how long a section actually needs. Compare each
+   * snapped span against its speech-weighted estimate and fall back to the
+   * proportional boundary whenever the squeeze exceeds 25%.
+   */
+  const need = sections.map((s) =>
+    s.sentences.reduce((n, t) => n + weight(t), 0) / totalW * speechTotal);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < sections.length; i++) {
+      const end = i + 1 < sectionStarts.length ? sectionStarts[i + 1] : AUDIO_SEC;
+      const span = end - sectionStarts[i];
+      // `need` is speech-only; the real span also carries the pauses inside it,
+      // so allow generous headroom and only correct a genuine squeeze.
+      if (span < need[i] * 0.75) {
+        const rough_i = rough.find((r) => r.sectionIdx === i)!.start;
+        sectionStarts[i] = Math.min(sectionStarts[i], rough_i);
+        if (i + 1 < sectionStarts.length) {
+          const proportional = rough.find((r) => r.sectionIdx === i + 1)?.start;
+          if (proportional && proportional > sectionStarts[i] + need[i] * 0.8) {
+            sectionStarts[i + 1] = proportional;
+          }
+        }
+      }
+    }
+  }
+  /**
+   * Final pass: a section must never begin mid-word. Any boundary the squeeze
+   * guard moved back into speech is nudged to the nearest real pause, provided
+   * that does not re-introduce a squeeze.
+   */
+  const inPause = (t: number) => gaps.some((g) => t >= g.start - 0.15 && t <= g.end + 0.15);
+  for (let i = 1; i < sectionStarts.length; i++) {
+    if (inPause(sectionStarts[i])) continue;
+    const cand = snap(sectionStarts[i], points, 2.0);
+    if (cand === sectionStarts[i]) continue;
+    const end = i + 1 < sectionStarts.length ? sectionStarts[i + 1] : AUDIO_SEC;
+    const prevEnd = sectionStarts[i - 1];
+    if (end - cand >= need[i] * 0.75 && cand - prevEnd >= need[i - 1] * 0.75) {
+      sectionStarts[i] = cand;
+    }
+  }
+
   // Enforce monotonicity in case two sections snapped to the same pause.
   for (let i = 1; i < sectionStarts.length; i++) {
     if (sectionStarts[i] <= sectionStarts[i - 1] + 1) {

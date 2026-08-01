@@ -7,6 +7,7 @@ import { memo } from "@/lib/cache";
 import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
+import { attempt, ok, fail, type ActionResult } from "@/lib/result";
 import { getSettings } from "@/lib/settings";
 import { isSettingsUnlocked } from "./settings";
 import { purgeBillObject, auditBill } from "./bills";
@@ -421,8 +422,9 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
  * again; already-logged legs are left exactly as they are, so distances,
  * fares, history, reports and exports are all unaffected.
  */
-export async function resetJourney(employeeId: string): Promise<{ ok: true }> {
-  if (!employeeId) throw new Error("Select your name first.");
+export async function resetJourney(employeeId: string): Promise<ActionResult> {
+  return attempt(async () => {
+  if (!employeeId) return fail("Select your name first.");
   const workDate = todayKey();
 
   const last = await prisma.journey.findFirst({
@@ -434,25 +436,64 @@ export async function resetJourney(employeeId: string): Promise<{ ok: true }> {
   // marker still records the intent so the UI can confirm it.
   const afterSequence = last?.sequence ?? -1;
 
-  await prisma.journeyReset.upsert({
-    where: { employeeId_workDate: { employeeId, workDate } },
-    create: { employeeId, workDate, afterSequence },
-    update: { afterSequence },
-  });
+    await prisma.journeyReset.upsert({
+      where: { employeeId_workDate: { employeeId, workDate } },
+      create: { employeeId, workDate, afterSequence },
+      update: { afterSequence },
+    });
 
-  revalidatePath("/app");
-  return { ok: true };
+    revalidatePath("/app");
+    return ok();
+  }, "resetJourney");
 }
 
-/** Remove a logged visit (Admin/correction). Gated by the admin PIN unlock. */
-export async function deleteVisit(id: string) {
-  if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
-  const existing = await prisma.journey.findUnique({ where: { id }, select: { billPath: true } });
-  await prisma.journey.delete({ where: { id } });
-  await purgeBillObject(existing?.billPath); // prevent orphaned storage
-  revalidatePath("/app");
-  revalidatePath("/app/admin");
-  return { ok: true };
+/**
+ * Remove a logged visit (Admin/correction). Gated by the admin PIN unlock.
+ *
+ * A Journey can be referenced by a ClaimItem, and that relation has no
+ * `onDelete` rule — so Prisma defaults to Restrict and the delete used to fail
+ * with a raw foreign-key error. Because the caller swallowed errors, that
+ * surfaced as "the delete button does nothing". The claim row is now removed
+ * with the leg inside one transaction, unless the claim has already been
+ * approved or paid — in which case deleting would silently change a settled
+ * amount, and the admin is told to reopen the claim instead.
+ */
+export async function deleteVisit(id: string): Promise<ActionResult> {
+  return attempt(async () => {
+    if (!(await isSettingsUnlocked())) {
+      return fail("Admin is locked. Enter the PIN again and retry.");
+    }
+
+    const existing = await prisma.journey.findUnique({
+      where: { id },
+      select: {
+        billPath: true,
+        claimItem: { select: { id: true, claim: { select: { status: true, periodMonth: true } } } },
+      },
+    });
+    if (!existing) return fail("That entry no longer exists — it may already have been deleted.");
+
+    const claim = existing.claimItem?.claim;
+    const LOCKED_CLAIM = ["MANAGER_APPROVED", "ADMIN_APPROVED", "FINANCE_APPROVED", "PAID"];
+    if (claim && LOCKED_CLAIM.includes(claim.status)) {
+      return fail(
+        `This trip is part of the ${claim.periodMonth} claim, which is already ` +
+        `${claim.status.replace(/_/g, " ").toLowerCase()}. Reopen that claim before deleting the trip.`,
+      );
+    }
+
+    await prisma.$transaction(async (tx) => {
+      if (existing.claimItem) await tx.claimItem.delete({ where: { id: existing.claimItem.id } });
+      await tx.journey.delete({ where: { id } });
+    });
+
+    // Storage cleanup is best-effort and must never fail a completed delete.
+    await purgeBillObject(existing.billPath).catch(() => {});
+
+    revalidatePath("/app");
+    revalidatePath("/app/admin");
+    return ok();
+  }, "deleteVisit");
 }
 
 const journeyBillSchema = z.object({
