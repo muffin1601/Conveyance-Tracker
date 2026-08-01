@@ -51,8 +51,9 @@ async function VisitEntry() {
       <Card>
         <SectionTitle>Log Site Visit</SectionTitle>
         <p className="text-xs text-muted -mt-2 mb-4">
-          Your first trip starts from {office?.name ?? "the head office"}. After that, each visit
-          starts from your last destination. Distance &amp; amount are calculated automatically.
+          Your first trip starts from {office?.name ?? "the head office"} by default (a different
+          starting point can be set for you in Settings). After that, each visit starts from your
+          last destination. Distance &amp; amount are calculated automatically.
         </p>
         <CheckinForm
           initialEmployeeId={initialEmployeeId}

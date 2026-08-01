@@ -106,9 +106,21 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
   return { from, sequence };
 }
 
+function siteToPoint(site: { id: string; name: string; latitude: number; longitude: number }): Point {
+  return {
+    name: site.name,
+    lat: site.latitude,
+    lng: site.longitude,
+    siteId: site.id,
+    customLocationId: null,
+    locationType: "MASTER" as const,
+  };
+}
+
 /**
- * The head office. Memoised for 5 minutes — it is read on every preview and
- * every logged visit but changes roughly never, and each read is a ~450 ms hop.
+ * The head office. Everyone's fallback origin. Memoised for 5 minutes — it is
+ * read on every preview and every logged visit but changes roughly never, and
+ * each read is a ~450 ms hop.
  */
 async function resolveOffice(): Promise<Point> {
   return memo("site:office", 5 * 60_000, async () => {
@@ -117,14 +129,35 @@ async function resolveOffice(): Promise<Point> {
       select: { id: true, name: true, latitude: true, longitude: true },
     });
     if (!office) throw new Error("Office location not configured. Ask an admin to set it up.");
-    return {
-      name: office.name,
-      lat: office.latitude,
-      lng: office.longitude,
-      siteId: office.id,
-      customLocationId: null,
-      locationType: "MASTER" as const,
-    };
+    return siteToPoint(office);
+  });
+}
+
+/**
+ * Where this employee's day starts. Most people start at the head office;
+ * an employee can be assigned a different starting-point site instead (e.g.
+ * staff working out of the showroom) via Settings → Staff. Falls back to the
+ * head office if no override is set, the assigned site was deactivated, or it
+ * lost its starting-point flag.
+ */
+async function resolveDefaultOrigin(employeeId: string): Promise<Point> {
+  return memo(`origin:${employeeId}`, 5 * 60_000, async () => {
+    const emp = await prisma.employee.findUnique({
+      where: { id: employeeId },
+      select: {
+        defaultOriginSite: {
+          select: {
+            id: true, name: true, latitude: true, longitude: true,
+            status: true, isStartingPoint: true, isOffice: true, deletedAt: true,
+          },
+        },
+      },
+    });
+    const site = emp?.defaultOriginSite;
+    if (site && site.status === "ACTIVE" && !site.deletedAt && (site.isStartingPoint || site.isOffice)) {
+      return siteToPoint(site);
+    }
+    return resolveOffice();
   });
 }
 
@@ -222,13 +255,13 @@ async function resolveLegContext(
   workDate: string,
   destination: Input["destination"],
 ) {
-  const [office, tail, to, settings] = await Promise.all([
-    resolveOffice(),
+  const [origin, tail, to, settings] = await Promise.all([
+    resolveDefaultOrigin(employeeId),
     loadChainTail(employeeId, workDate),
     resolveDestination(destination, employeeId),
     getSettings(),
   ]);
-  const { from, sequence } = resolveSource(tail, office);
+  const { from, sequence } = resolveSource(tail, origin);
   return { from, to, sequence, settings, lastLeg: tail.last, isFirstLeg: !tail.chained };
 }
 
@@ -374,8 +407,8 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
   if (!employeeId) return null;
   const workDate = todayKey();
 
-  const [office, legs, reset] = await Promise.all([
-    resolveOffice(),
+  const [origin, legs, reset] = await Promise.all([
+    resolveDefaultOrigin(employeeId),
     prisma.journey.findMany({
       where: { employeeId, workDate },
       orderBy: { sequence: "asc" },
@@ -399,7 +432,7 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
 
   return {
     tripNumber: (last ? last.sequence + 1 : 0) + 1,
-    fromName: chainedTail ? legToName(chainedTail) : office.name,
+    fromName: chainedTail ? legToName(chainedTail) : origin.name,
     atOrigin: !chainedTail,
     totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
     totalAmount: legs.reduce((s, l) => s + l.amount, 0),

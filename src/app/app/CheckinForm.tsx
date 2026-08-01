@@ -96,13 +96,19 @@ export function CheckinForm({
   const manualPendingInput = useManual && !manualActive;
 
   // ── Server state for the selected employee ────────────────────────────
-  const refreshJourney = useCallback(async (empId: string) => {
-    if (!empId) { setJourney(null); return; }
+  // Returns what it fetched (not just void) so callers like doReset can read
+  // the just-refreshed origin instead of quoting a hardcoded office name —
+  // origin varies per employee now, so that name would often be wrong.
+  const refreshJourney = useCallback(async (empId: string): Promise<JourneyState | null> => {
+    if (!empId) { setJourney(null); return null; }
     setJourneyLoading(true);
     try {
-      setJourney(await getJourneyState(empId));
+      const j = await getJourneyState(empId);
+      setJourney(j);
+      return j;
     } catch {
       setJourney(null); // the summary is supplementary — never block logging
+      return null;
     } finally {
       setJourneyLoading(false);
     }
@@ -300,14 +306,14 @@ export function CheckinForm({
 
   function doReset() {
     if (!employeeId) return;
-    if (!confirm("Restart the journey? Your next trip will start from the office again. Trips already logged are kept.")) return;
+    if (!confirm("Restart the journey? Your next trip will start from your usual starting point again. Trips already logged are kept.")) return;
     startReset(async () => {
       try {
         const r = await resetJourney(employeeId);
         if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
         setDest(null); setPreview(null); setUseManual(false); setManualKm("");
-        setMsg({ ok: true, text: `Journey restarted — your next trip starts from ${officeName}.` });
-        await refreshJourney(employeeId);
+        const refreshed = await refreshJourney(employeeId);
+        setMsg({ ok: true, text: `Journey restarted — your next trip starts from ${refreshed?.fromName ?? officeName}.` });
       } catch (e) {
         setMsg({ ok: false, text: errorMessage(e) });
       }

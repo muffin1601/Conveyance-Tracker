@@ -40,10 +40,13 @@ async function main() {
     process.exit(1);
   }
 
-  const clash = await prisma.employee.findFirst({
-    where: { name: { equals: name.trim(), mode: "insensitive" }, deletedAt: null },
+  // Compared in memory rather than with Prisma's Postgres-only
+  // `mode: "insensitive"`, so this script also runs against SQLite.
+  const roster = await prisma.employee.findMany({
+    where: { deletedAt: null },
     select: { employeeCode: true, name: true, status: true },
   });
+  const clash = roster.find((e) => e.name.trim().toLowerCase() === name.trim().toLowerCase());
   if (clash) {
     console.log(`Already on the roster: ${clash.employeeCode} — ${clash.name} (${clash.status}). Nothing to do.`);
     return;
@@ -51,8 +54,7 @@ async function main() {
 
   // Allocate the next free WAT-#### rather than assuming count + 1, so a gap
   // from a previous deletion can never cause a unique-constraint failure.
-  const codes = await prisma.employee.findMany({ select: { employeeCode: true } });
-  const used = new Set(codes.map((c) => c.employeeCode));
+  const used = new Set(roster.map((c) => c.employeeCode));
   let n = 1;
   while (used.has(`WAT-${String(n).padStart(4, "0")}`)) n++;
   const employeeCode = `WAT-${String(n).padStart(4, "0")}`;
