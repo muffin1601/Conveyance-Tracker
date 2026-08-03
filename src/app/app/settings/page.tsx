@@ -30,7 +30,10 @@ export default async function SettingsPage() {
     prisma.site.findMany({
       where: { deletedAt: null },
       orderBy: [{ isOffice: "desc" }, { status: "asc" }, { name: "asc" }],
-      select: { id: true, code: true, name: true, address: true, city: true, status: true, isOffice: true },
+      select: {
+        id: true, code: true, name: true, address: true, landmark: true,
+        latitude: true, longitude: true, city: true, status: true, isOffice: true,
+      },
     }),
     getStartingPointSites(),
   ]);

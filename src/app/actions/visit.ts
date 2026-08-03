@@ -392,6 +392,9 @@ export interface JourneyState {
   fromName: string;
   /** That location's own street address — null once the day is underway (see resolveSource). */
   fromAddress: string | null;
+  /** Coordinates of the starting point — for the "how far is that from me" GPS check and Navigate. */
+  fromLat: number | null;
+  fromLng: number | null;
   /** True when the next leg starts at the office (day start, or after a reset). */
   atOrigin: boolean;
   totalKm: number;
@@ -402,6 +405,9 @@ export interface JourneyState {
     sequence: number;
     fromName: string;
     toName: string;
+    /** The leg's destination — for a one-tap Navigate link on the timeline. */
+    toLat: number | null;
+    toLng: number | null;
     distanceKm: number;
     amount: number;
     mode: string;
@@ -428,8 +434,9 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
       select: {
         id: true, sequence: true, fromName: true, toName: true,
         distanceKm: true, amount: true, vehicleType: true, createdAt: true,
-        fromSite: { select: { name: true } },
-        toSite: { select: { name: true } },
+        toLat: true, toLng: true,
+        fromSite: { select: { name: true, latitude: true, longitude: true } },
+        toSite: { select: { name: true, latitude: true, longitude: true } },
         fromCustomLocation: { select: { locationName: true } },
         toCustomLocation: { select: { locationName: true } },
       },
@@ -447,6 +454,8 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
     tripNumber: (last ? last.sequence + 1 : 0) + 1,
     fromName: chainedTail ? legToName(chainedTail) : origin.name,
     fromAddress: chainedTail ? null : origin.address,
+    fromLat: chainedTail ? (chainedTail.toLat ?? chainedTail.toSite?.latitude ?? null) : origin.lat,
+    fromLng: chainedTail ? (chainedTail.toLng ?? chainedTail.toSite?.longitude ?? null) : origin.lng,
     atOrigin: !chainedTail,
     totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
     totalAmount: legs.reduce((s, l) => s + l.amount, 0),
@@ -455,6 +464,8 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
       sequence: l.sequence,
       fromName: legFromName(l),
       toName: legToName(l),
+      toLat: l.toLat ?? l.toSite?.latitude ?? null,
+      toLng: l.toLng ?? l.toSite?.longitude ?? null,
       distanceKm: l.distanceKm,
       amount: l.amount,
       mode: l.vehicleType,

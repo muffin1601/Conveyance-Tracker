@@ -5,6 +5,7 @@ import { UploadCloud, FileText, X, Loader2, RotateCw, Image as ImageIcon } from 
 import { requestBillUpload, discardBill } from "@/app/actions/bills";
 import { cn } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
+import { t, DEFAULT_LANG, type Lang } from "@/lib/i18n";
 
 export interface BillMetaValue {
   path: string;
@@ -33,10 +34,12 @@ export function BillUpload({
   employeeId,
   onChange,
   disabled,
+  lang = DEFAULT_LANG,
 }: {
   employeeId: string;
   onChange: (meta: BillMetaValue | null) => void;
   disabled?: boolean;
+  lang?: Lang;
 }) {
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -57,9 +60,9 @@ export function BillUpload({
   }, [previewUrl]);
 
   function validate(f: File): string | null {
-    if (f.size <= 0) return "The selected file is empty.";
-    if (f.size > MAX_MB * 1024 * 1024) return `File too large (max ${MAX_MB} MB).`;
-    if (!ALLOWED.includes(f.type)) return "Unsupported type. Allowed: PDF, PNG, JPG, JPEG, WEBP.";
+    if (f.size <= 0) return t(lang, "fileEmpty");
+    if (f.size > MAX_MB * 1024 * 1024) return t(lang, "fileTooLarge", { mb: String(MAX_MB) });
+    if (!ALLOWED.includes(f.type)) return t(lang, "fileUnsupportedType");
     return null;
   }
 
@@ -82,10 +85,10 @@ export function BillUpload({
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setProgress(Math.round((e.loaded / e.total) * 100));
         };
-        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload failed (${xhr.status}).`)));
-        xhr.onerror = () => reject(new Error("Network error during upload."));
-        xhr.onabort = () => reject(new Error("Upload cancelled."));
-        xhr.ontimeout = () => reject(new Error("Upload timed out."));
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(t(lang, "uploadFailed", { status: String(xhr.status) }))));
+        xhr.onerror = () => reject(new Error(t(lang, "uploadNetworkError")));
+        xhr.onabort = () => reject(new Error(t(lang, "uploadCancelled")));
+        xhr.ontimeout = () => reject(new Error(t(lang, "uploadTimedOut")));
         xhr.timeout = 60000;
         xhr.send(f);
       });
@@ -149,18 +152,18 @@ export function BillUpload({
                 <div className="h-1.5 w-full rounded bg-bg overflow-hidden">
                   <div className="h-full bg-brand transition-all" style={{ width: `${progress}%` }} />
                 </div>
-                <p className="mt-1 text-xs text-muted flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> Uploading… {progress}%</p>
+                <p className="mt-1 text-xs text-muted flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" /> {t(lang, "uploading")} {progress}%</p>
               </div>
             )}
-            {status === "done" && <p className="mt-1 text-xs text-green-600">Uploaded ✓</p>}
+            {status === "done" && <p className="mt-1 text-xs text-green-600">{t(lang, "uploadedDone")}</p>}
             {status === "error" && (
               <div className="mt-1 flex items-center gap-2">
                 <p className="text-xs text-red-600">{error}</p>
-                <button type="button" onClick={() => doUpload(file)} className="text-xs text-brand inline-flex items-center gap-0.5"><RotateCw className="h-3 w-3" /> Retry</button>
+                <button type="button" onClick={() => doUpload(file)} className="text-xs text-brand inline-flex items-center gap-0.5"><RotateCw className="h-3 w-3" /> {t(lang, "retry")}</button>
               </div>
             )}
           </div>
-          <button type="button" onClick={remove} disabled={disabled} className="text-muted hover:text-red-600" aria-label="Remove attachment">
+          <button type="button" onClick={remove} disabled={disabled} className="text-muted hover:text-red-600" aria-label={t(lang, "removeAttachment")}>
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -189,8 +192,8 @@ export function BillUpload({
         )}
       >
         <UploadCloud className="h-6 w-6 text-muted" />
-        <p className="text-sm"><span className="text-brand font-medium">Browse</span> or drag &amp; drop a bill</p>
-        <p className="text-xs text-muted flex items-center gap-1"><ImageIcon className="h-3 w-3" /> PDF, PNG, JPG, JPEG, WEBP · max {MAX_MB} MB</p>
+        <p className="text-sm"><span className="text-brand font-medium">{t(lang, "browseOrDrag")}</span> {t(lang, "browseOrDragSuffix")}</p>
+        <p className="text-xs text-muted flex items-center gap-1"><ImageIcon className="h-3 w-3" /> {t(lang, "billTypesHint", { mb: String(MAX_MB) })}</p>
       </div>
       <input
         ref={inputRef}

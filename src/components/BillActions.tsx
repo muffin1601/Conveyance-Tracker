@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Eye, Download, FileText, Image as ImageIcon, Loader2 } from "lucide-react";
 import { getBillUrl } from "@/app/actions/bills";
 import { errorMessage } from "@/lib/errors";
+import { t, DEFAULT_LANG, type Lang } from "@/lib/i18n";
 
 /**
  * View / Download controls for an already-saved bill. URLs are short-lived and
@@ -16,12 +17,14 @@ export function BillActions({
   name,
   type,
   compact,
+  lang = DEFAULT_LANG,
 }: {
   entity: "misc" | "conveyance";
   id: string;
   name?: string | null;
   type?: string | null;
   compact?: boolean;
+  lang?: Lang;
 }) {
   const [pending, start] = useTransition();
   const [err, setErr] = useState("");
@@ -45,11 +48,11 @@ export function BillActions({
   return (
     <span className="inline-flex items-center gap-2">
       {!compact && <Icon className="h-3.5 w-3.5 text-muted shrink-0" />}
-      <button type="button" onClick={() => open(false)} disabled={pending} className="text-brand inline-flex items-center gap-0.5 text-xs hover:underline" title="View bill">
-        {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />} View
+      <button type="button" onClick={() => open(false)} disabled={pending} className="text-brand inline-flex items-center gap-0.5 text-xs hover:underline" title={t(lang, "viewBill")}>
+        {pending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Eye className="h-3 w-3" />} {t(lang, "view")}
       </button>
-      <button type="button" onClick={() => open(true)} disabled={pending} className="text-muted inline-flex items-center gap-0.5 text-xs hover:underline" title="Download bill">
-        <Download className="h-3 w-3" /> Download
+      <button type="button" onClick={() => open(true)} disabled={pending} className="text-muted inline-flex items-center gap-0.5 text-xs hover:underline" title={t(lang, "downloadBill")}>
+        <Download className="h-3 w-3" /> {t(lang, "download")}
       </button>
       {err && <span className="text-xs text-red-600">{err}</span>}
     </span>

@@ -113,6 +113,10 @@ model Site {
   zone           String?
   client         String?
   projectManager String?
+  // A nearby, well-known reference point ("opposite XYZ petrol pump") — shown
+  // alongside the address so a non-technical employee can recognise the spot
+  // without reading coordinates.
+  landmark       String?
   latitude       Float
   longitude      Float
   geofenceRadius Int     @default(200) // metres

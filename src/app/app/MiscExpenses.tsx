@@ -11,6 +11,7 @@ import { errorMessage } from "@/lib/errors";
 import { inr, todayKey, cn } from "@/lib/utils";
 import { BillUpload, type BillMetaValue } from "@/components/BillUpload";
 import { BillActions } from "@/components/BillActions";
+import { t, type Lang } from "@/lib/i18n";
 
 interface Employee { id: string; name: string; designation: string }
 interface Expense {
@@ -24,12 +25,13 @@ function catLabel(e: Expense) {
 }
 
 export function MiscExpenses({
-  employees, uploadsEnabled, initialEmployeeId = "",
+  employees, uploadsEnabled, initialEmployeeId = "", lang,
 }: {
   employees: Employee[];
   uploadsEnabled: boolean;
   /** Restored from the device cookie so a returning user is already selected. */
   initialEmployeeId?: string;
+  lang: Lang;
 }) {
   const [employeeId, setEmployeeId] = useState(initialEmployeeId);
   const [items, setItems] = useState<Expense[]>([]);
@@ -64,7 +66,7 @@ export function MiscExpenses({
   return (
     <div className="space-y-4">
       <div>
-        <label className="label" htmlFor="misc-emp">Employee</label>
+        <label className="label" htmlFor="misc-emp">{t(lang, "employee")}</label>
         <Combobox
           id="misc-emp"
           options={employeeOptions}
@@ -73,9 +75,9 @@ export function MiscExpenses({
             setEmployeeId(id); setShowForm(false); setEditing(null);
             void setActiveEmployee(id).catch(() => {});
           }}
-          placeholder="— Select your name —"
-          searchPlaceholder="Search by name or role…"
-          emptyMessage="No employee matches that search."
+          placeholder={t(lang, "selectYourName")}
+          searchPlaceholder={t(lang, "searchByName")}
+          emptyMessage={t(lang, "noEmployeeMatch")}
         />
       </div>
 
@@ -83,7 +85,7 @@ export function MiscExpenses({
         <>
           {!showForm && !editing && (
             <button type="button" onClick={() => setShowForm(true)} className="btn-ghost text-sm">
-              <Plus className="h-4 w-4" /> Add Expense
+              <Plus className="h-4 w-4" /> {t(lang, "addExpense")}
             </button>
           )}
 
@@ -92,6 +94,7 @@ export function MiscExpenses({
               employeeId={employeeId}
               expense={editing}
               uploadsEnabled={uploadsEnabled}
+              lang={lang}
               onDone={() => { setShowForm(false); setEditing(null); refresh(employeeId); }}
               onCancel={() => { setShowForm(false); setEditing(null); }}
             />
@@ -101,16 +104,16 @@ export function MiscExpenses({
             <div className="rounded-md border border-red-500/30 bg-red-500/10 p-3 text-sm text-red-600">
               <p>{loadError}</p>
               <button type="button" onClick={() => refresh(employeeId)} className="btn-ghost mt-2 text-xs">
-                Try again
+                {t(lang, "tryAgainLower")}
               </button>
             </div>
           ) : loading ? (
-            <div role="status" aria-label="Loading expenses" className="space-y-2">
+            <div role="status" aria-label={t(lang, "loadingExpenses")} className="space-y-2">
               <Skeleton className="h-14 w-full" />
               <Skeleton className="h-14 w-full" />
             </div>
           ) : items.length === 0 ? (
-            <p className="text-sm text-muted py-4 text-center">No miscellaneous expenses recorded.</p>
+            <p className="text-sm text-muted py-4 text-center">{t(lang, "noExpensesRecorded")}</p>
           ) : (
             <div className="space-y-2">
               {items.map((e) => (
@@ -122,7 +125,7 @@ export function MiscExpenses({
                       {e.billPath && (
                         <span className="inline-flex items-center gap-1">
                           <Paperclip className="h-3 w-3 text-green-600" />
-                          <BillActions entity="misc" id={e.id} name={e.billName} type={e.billType} compact />
+                          <BillActions entity="misc" id={e.id} name={e.billName} type={e.billType} compact lang={lang} />
                         </span>
                       )}
                     </div>
@@ -131,13 +134,13 @@ export function MiscExpenses({
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
                     <span className="font-medium tabular-nums">{inr(e.amount)}</span>
-                    <button type="button" onClick={() => { setEditing(e); setShowForm(false); }} className="text-muted hover:text-fg" aria-label="Edit"><Pencil className="h-3.5 w-3.5" /></button>
-                    <DeleteButton id={e.id} employeeId={employeeId} onDone={() => refresh(employeeId)} />
+                    <button type="button" onClick={() => { setEditing(e); setShowForm(false); }} className="text-muted hover:text-fg" aria-label={t(lang, "editAria")}><Pencil className="h-3.5 w-3.5" /></button>
+                    <DeleteButton id={e.id} employeeId={employeeId} lang={lang} onDone={() => refresh(employeeId)} />
                   </div>
                 </div>
               ))}
               <div className="flex items-center justify-between border-t pt-2 text-sm font-medium tabular-nums">
-                <span>Miscellaneous Total</span><span>{inr(total)}</span>
+                <span>{t(lang, "miscTotal")}</span><span>{inr(total)}</span>
               </div>
             </div>
           )}
@@ -147,26 +150,27 @@ export function MiscExpenses({
   );
 }
 
-function DeleteButton({ id, employeeId, onDone }: { id: string; employeeId: string; onDone: () => void }) {
+function DeleteButton({ id, employeeId, lang, onDone }: { id: string; employeeId: string; lang: Lang; onDone: () => void }) {
   const [pending, start] = useTransition();
   const [confirm, setConfirm] = useState(false);
   if (confirm) {
     return (
       <span className="flex items-center gap-1">
-        <button type="button" disabled={pending} onClick={() => start(async () => { await deleteMiscExpense(id, employeeId); onDone(); })} className="text-red-600" aria-label="Confirm delete"><Check className="h-3.5 w-3.5" /></button>
-        <button type="button" onClick={() => setConfirm(false)} className="text-muted" aria-label="Cancel"><X className="h-3.5 w-3.5" /></button>
+        <button type="button" disabled={pending} onClick={() => start(async () => { await deleteMiscExpense(id, employeeId); onDone(); })} className="text-red-600" aria-label={t(lang, "confirmDeleteAria")}><Check className="h-3.5 w-3.5" /></button>
+        <button type="button" onClick={() => setConfirm(false)} className="text-muted" aria-label={t(lang, "cancelAria")}><X className="h-3.5 w-3.5" /></button>
       </span>
     );
   }
-  return <button type="button" onClick={() => setConfirm(true)} className="text-muted hover:text-red-600" aria-label="Delete"><Trash2 className="h-3.5 w-3.5" /></button>;
+  return <button type="button" onClick={() => setConfirm(true)} className="text-muted hover:text-red-600" aria-label={t(lang, "deleteAria")}><Trash2 className="h-3.5 w-3.5" /></button>;
 }
 
 function ExpenseForm({
-  employeeId, expense, uploadsEnabled, onDone, onCancel,
+  employeeId, expense, uploadsEnabled, lang, onDone, onCancel,
 }: {
   employeeId: string;
   expense: Expense | null;
   uploadsEnabled: boolean;
+  lang: Lang;
   onDone: () => void;
   onCancel: () => void;
 }) {
@@ -187,11 +191,11 @@ function ExpenseForm({
   function submit() {
     setError("");
     const amountNum = parseFloat(amount);
-    if (!Number.isFinite(amountNum) || amountNum <= 0) { setError("Enter an amount greater than ₹0."); return; }
-    if (amountNum > 1_000_000) { setError("That amount looks too large — please check it."); return; }
-    if (category === "OTHER" && !customCategory.trim()) { setError("Enter a custom category for “Other”."); return; }
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) { setError("Choose a valid date."); return; }
-    if (workDate > todayKey()) { setError("The date cannot be in the future."); return; }
+    if (!Number.isFinite(amountNum) || amountNum <= 0) { setError(t(lang, "enterAmountPositive")); return; }
+    if (amountNum > 1_000_000) { setError(t(lang, "amountTooLarge")); return; }
+    if (category === "OTHER" && !customCategory.trim()) { setError(t(lang, "enterCustomCategoryError")); return; }
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) { setError(t(lang, "chooseValidDate")); return; }
+    if (workDate > todayKey()) { setError(t(lang, "dateNotFuture")); return; }
 
     const payload = {
       employeeId,
@@ -219,61 +223,61 @@ function ExpenseForm({
   return (
     <div className="rounded-lg border p-3 space-y-3">
       <div className="flex items-center gap-2 text-sm font-medium">
-        <Receipt className="h-4 w-4 text-brand" /> {expense ? "Edit expense" : "New expense"}
+        <Receipt className="h-4 w-4 text-brand" /> {expense ? t(lang, "editExpense") : t(lang, "newExpense")}
       </div>
       <div className="grid grid-cols-2 gap-2">
         <div>
-          <label className="label">Category</label>
+          <label className="label">{t(lang, "category")}</label>
           <select className="input" value={category} onChange={(e) => setCategory(e.target.value as MiscCategory)}>
             {MISC_CATEGORIES.map((c) => <option key={c} value={c}>{MISC_CATEGORY_LABEL[c]}</option>)}
           </select>
         </div>
         <div>
-          <label className="label">Date</label>
+          <label className="label">{t(lang, "date")}</label>
           <input type="date" className="input" value={workDate} onChange={(e) => setWorkDate(e.target.value)} />
         </div>
       </div>
       {category === "OTHER" && (
         <div>
-          <label className="label">Custom Category</label>
-          <input className="input" placeholder="Enter category" value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} />
+          <label className="label">{t(lang, "customCategory")}</label>
+          <input className="input" placeholder={t(lang, "enterCategoryPlaceholder")} value={customCategory} onChange={(e) => setCustomCategory(e.target.value)} />
         </div>
       )}
       <div>
-        <label className="label">Amount (₹)</label>
+        <label className="label">{t(lang, "amount")}</label>
         <input type="number" min="0" step="0.01" inputMode="decimal" className="input" value={amount} onChange={(e) => setAmount(e.target.value)} />
       </div>
       <div>
-        <label className="label">Description</label>
-        <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Optional" />
+        <label className="label">{t(lang, "description")}</label>
+        <input className="input" value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t(lang, "optional")} />
       </div>
       <div>
-        <label className="label">Notes</label>
-        <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Optional" />
+        <label className="label">{t(lang, "notes")}</label>
+        <input className="input" value={notes} onChange={(e) => setNotes(e.target.value)} placeholder={t(lang, "optional")} />
       </div>
 
       {/* Bill / attachment */}
       <div>
-        <label className="label">Bill / Attachment</label>
+        <label className="label">{t(lang, "billAttachment")}</label>
         {!uploadsEnabled ? (
-          <p className="text-xs text-muted">Bill attachments are currently disabled. The expense will still be saved.</p>
+          <p className="text-xs text-muted">{t(lang, "billDisabledNote")}</p>
         ) : hasExistingBill && !replacing && !bill ? (
           <div className="flex items-center justify-between gap-2 rounded-md border p-2">
             <span className="inline-flex items-center gap-1.5 min-w-0 text-sm">
               <Paperclip className="h-3.5 w-3.5 text-green-600 shrink-0" />
-              <span className="truncate">{expense?.billName ?? "Bill attached"}</span>
+              <span className="truncate">{expense?.billName ?? t(lang, "billAttached")}</span>
             </span>
             <span className="flex items-center gap-3 shrink-0">
-              <BillActions entity="misc" id={expense!.id} name={expense?.billName} type={expense?.billType} compact />
-              <button type="button" onClick={() => setReplacing(true)} className="text-xs text-brand">Replace</button>
-              <button type="button" onClick={() => { setRemoveExisting(true); setReplacing(false); }} className="text-xs text-red-600">Remove</button>
+              <BillActions entity="misc" id={expense!.id} name={expense?.billName} type={expense?.billType} compact lang={lang} />
+              <button type="button" onClick={() => setReplacing(true)} className="text-xs text-brand">{t(lang, "replaceLabel")}</button>
+              <button type="button" onClick={() => { setRemoveExisting(true); setReplacing(false); }} className="text-xs text-red-600">{t(lang, "removeLabel")}</button>
             </span>
           </div>
         ) : (
           <>
-            <BillUpload employeeId={employeeId} onChange={(m) => setBill(m)} />
+            <BillUpload employeeId={employeeId} onChange={(m) => setBill(m)} lang={lang} />
             {(replacing || removeExisting) && expense?.billPath && (
-              <button type="button" onClick={() => { setReplacing(false); setRemoveExisting(false); setBill(null); }} className="mt-1 text-xs text-muted">Keep existing bill instead</button>
+              <button type="button" onClick={() => { setReplacing(false); setRemoveExisting(false); setBill(null); }} className="mt-1 text-xs text-muted">{t(lang, "keepExistingBill")}</button>
             )}
           </>
         )}
@@ -282,9 +286,9 @@ function ExpenseForm({
       {error && <p className="text-sm text-red-600">{error}</p>}
       <div className="flex gap-2">
         <button type="button" onClick={submit} disabled={pending} className="btn-primary text-sm flex-1">
-          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {expense ? "Save Changes" : "Add Expense"}
+          {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />} {expense ? t(lang, "saveChanges") : t(lang, "addExpense")}
         </button>
-        <button type="button" onClick={onCancel} className={cn("btn-ghost text-sm")}>Cancel</button>
+        <button type="button" onClick={onCancel} className={cn("btn-ghost text-sm")}>{t(lang, "cancel")}</button>
       </div>
     </div>
   );

@@ -176,6 +176,7 @@ export async function lookupAddress(query: string): Promise<ActionResult<{
 const siteSchema = z.object({
   name: z.string().trim().min(2, "Enter a location name.").max(160),
   address: z.string().trim().min(4, "Enter the address.").max(400),
+  landmark: z.string().trim().max(200).optional().or(z.literal("")),
   city: z.string().trim().max(120).optional().or(z.literal("")),
   state: z.string().trim().max(120).optional().or(z.literal("")),
   pincode: z.string().trim().max(12).optional().or(z.literal("")),
@@ -219,6 +220,7 @@ export async function createSite(input: NewSite): Promise<ActionResult<{ code: s
         code,
         name: data.name,
         address: data.address,
+        landmark: data.landmark || null,
         city: data.city || null,
         state: data.state || null,
         pincode: data.pincode || null,
@@ -235,6 +237,61 @@ export async function createSite(input: NewSite): Promise<ActionResult<{ code: s
     flushMasterData();
     return ok({ code });
   }, "createSite");
+}
+
+/**
+ * Correct an existing location's address/coordinates/landmark in place.
+ *
+ * Without this, fixing an approximate geocode (e.g. a farm colony with no
+ * street-level map data) meant deactivating the site and recreating it under
+ * a new code — which orphans every past trip's display from the "current"
+ * record and is needlessly destructive for what is really just a correction.
+ */
+export async function updateSite(id: string, input: NewSite): Promise<ActionResult> {
+  return attempt(async () => {
+    const locked = await requireUnlocked();
+    if (locked) return fail(locked);
+
+    const parsed = siteSchema.safeParse(input);
+    if (!parsed.success) return fail(parsed.error.issues[0].message);
+    const data = parsed.data;
+
+    if (!isValidCoord(data.latitude, data.longitude)) {
+      return fail("Those coordinates are not valid. Look the address up again.");
+    }
+
+    const existing = await prisma.site.findMany({
+      where: { deletedAt: null, id: { not: id } },
+      select: { code: true, name: true, status: true },
+    });
+    const clash = existing.find((e) => e.name.trim().toLowerCase() === data.name.toLowerCase());
+    if (clash) {
+      return fail(`A different location is already named "${clash.name}" (${clash.code}).`);
+    }
+
+    const site = await prisma.site.findUnique({ where: { id }, select: { id: true, deletedAt: true } });
+    if (!site || site.deletedAt) return fail("That location no longer exists.");
+
+    await prisma.site.update({
+      where: { id },
+      data: {
+        name: data.name,
+        address: data.address,
+        landmark: data.landmark || null,
+        city: data.city || null,
+        state: data.state || null,
+        pincode: data.pincode || null,
+        region: data.state === "Delhi" || data.state === "Haryana" ? "Delhi NCR" : data.state || null,
+        zone: data.city || null,
+        latitude: data.latitude,
+        longitude: data.longitude,
+        geofenceRadius: data.geofenceRadius,
+      },
+    });
+
+    flushMasterData();
+    return ok();
+  }, "updateSite");
 }
 
 /** Deactivate or reactivate a site. Never deletes — past trips reference it. */

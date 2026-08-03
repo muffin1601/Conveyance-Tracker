@@ -3,11 +3,14 @@ import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { getActiveEmployees, getActiveSites, getHeadOffice } from "@/lib/masterData";
 import { getActiveEmployeeId } from "@/app/actions/session";
+import { getLanguage } from "@/app/actions/language";
+import { t } from "@/lib/i18n";
 import { todayKey, inr, km, fmtTime } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
+import { NavigateButton } from "@/components/NavigateButton";
 import { ArrowRight } from "lucide-react";
 import { CheckinForm } from "./CheckinForm";
 import { MiscExpenses } from "./MiscExpenses";
@@ -34,12 +37,13 @@ function modeLabel(m: string): string {
  * delay, and it grows with every visit ever logged.
  */
 async function VisitEntry() {
-  const [employees, sites, office, settings, activeEmployeeId] = await Promise.all([
+  const [employees, sites, office, settings, activeEmployeeId, lang] = await Promise.all([
     getActiveEmployees(),
     getActiveSites(),
     getHeadOffice(),
     getSettings(),
     getActiveEmployeeId(),
+    getLanguage(),
   ]);
   // Only pre-select someone who is still on the active roster.
   const initialEmployeeId =
@@ -49,13 +53,12 @@ async function VisitEntry() {
   return (
     <>
       <Card>
-        <SectionTitle>Log Site Visit</SectionTitle>
+        <SectionTitle>{t(lang, "logSiteVisit")}</SectionTitle>
         <p className="text-xs text-muted -mt-2 mb-4">
-          Your first trip starts from {office?.name ?? "the head office"} by default (a different
-          starting point can be set for you in Settings). After that, each visit starts from your
-          last destination. Distance &amp; amount are calculated automatically.
+          {t(lang, "introFirstTrip", { office: office?.name ?? "the head office" })}
         </p>
         <CheckinForm
+          lang={lang}
           initialEmployeeId={initialEmployeeId}
           employees={employees}
           sites={sites}
@@ -65,12 +68,11 @@ async function VisitEntry() {
       </Card>
 
       <Card>
-        <SectionTitle>Miscellaneous Expenses</SectionTitle>
+        <SectionTitle>{t(lang, "miscExpensesTitle")}</SectionTitle>
         <p className="text-xs text-muted -mt-2 mb-4">
-          Record non-conveyance expenses — parking, toll, food, and more. These are kept separate
-          from conveyance but appear in your day summary and reports.
+          {t(lang, "miscExpensesIntro")}
         </p>
-        <MiscExpenses initialEmployeeId={initialEmployeeId} employees={employees} uploadsEnabled={uploadsEnabled} />
+        <MiscExpenses lang={lang} initialEmployeeId={initialEmployeeId} employees={employees} uploadsEnabled={uploadsEnabled} />
       </Card>
     </>
   );
@@ -86,14 +88,12 @@ async function VisitEntry() {
  */
 async function TodaySummary() {
   const workDate = todayKey();
-  const employeeId = await getActiveEmployeeId();
+  const [employeeId, lang] = await Promise.all([getActiveEmployeeId(), getLanguage()]);
 
   // No name chosen yet — show nothing rather than everyone's data.
   if (!employeeId) {
     return (
-      <Empty>
-        Select your name above to see your trips and expenses for today.
-      </Empty>
+      <Empty>{t(lang, "selectNameToSeeTrips")}</Empty>
     );
   }
 
@@ -154,22 +154,22 @@ async function TodaySummary() {
   const miscCatLabel = (e: (typeof miscExpenses)[number]) =>
     e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
 
-  if (timelines.length === 0) return <Empty>No activity logged today yet.</Empty>;
+  if (timelines.length === 0) return <Empty>{t(lang, "noActivityToday")}</Empty>;
 
   return (
     <div className="space-y-5">
-      {timelines.map((t) => (
-        <div key={t.employeeId} className="rounded-lg border p-3">
+      {timelines.map((day) => (
+        <div key={day.employeeId} className="rounded-lg border p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-sm">{t.name}</span>
-            <span className="text-xs text-muted tabular-nums">{fmtTime(t.lastAt)}</span>
+            <span className="font-medium text-sm">{day.name}</span>
+            <span className="text-xs text-muted tabular-nums">{fmtTime(day.lastAt)}</span>
           </div>
 
-          {t.legs.length > 0 && (
+          {day.legs.length > 0 && (
             <>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">Conveyance</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">{t(lang, "conveyanceLabel")}</div>
               <ol className="space-y-1.5">
-                {t.legs.map((j, i) => (
+                {day.legs.map((j, i) => (
                   <li key={j.id} className="text-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 min-w-0">
@@ -183,20 +183,24 @@ async function TodaySummary() {
                           </span>
                         )}
                       </div>
-                      <div className="text-right shrink-0 pl-3 tabular-nums">
-                        {km(j.distanceKm)} · {inr(j.amount)}
-                        <span className="text-xs text-muted ml-1">{modeLabel(j.vehicleType)}</span>
+                      <div className="flex shrink-0 items-center gap-1 pl-3">
+                        <span className="text-right tabular-nums">
+                          {km(j.distanceKm)} · {inr(j.amount)}
+                          <span className="ml-1 text-xs text-muted">{modeLabel(j.vehicleType)}</span>
+                        </span>
+                        <NavigateButton lat={j.toLat} lng={j.toLng} compact />
                       </div>
                     </div>
                     {uploadsEnabled && (
                       <div className="mt-0.5 pl-0.5">
                         <JourneyBill
                           journeyId={j.id}
-                          employeeId={t.employeeId}
+                          employeeId={day.employeeId}
                           billPath={j.billPath}
                           billName={j.billName}
                           billType={j.billType}
                           uploadsEnabled={uploadsEnabled}
+                          lang={lang}
                         />
                       </div>
                     )}
@@ -204,17 +208,17 @@ async function TodaySummary() {
                 ))}
               </ol>
               <div className="flex items-center justify-between mt-1.5 text-sm tabular-nums">
-                <span className="text-muted">Total Conveyance</span>
-                <span className="font-medium">{km(t.totalKm)} · {inr(t.convTotal)}</span>
+                <span className="text-muted">{t(lang, "totalConveyanceLabel")}</span>
+                <span className="font-medium">{km(day.totalKm)} · {inr(day.convTotal)}</span>
               </div>
             </>
           )}
 
-          {t.misc.length > 0 && (
+          {day.misc.length > 0 && (
             <>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1 mt-3">Miscellaneous</div>
+              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1 mt-3">{t(lang, "miscellaneousLabel")}</div>
               <ul className="space-y-1.5">
-                {t.misc.map((e) => (
+                {day.misc.map((e) => (
                   <li key={e.id} className="flex items-center justify-between text-sm">
                     <span className="truncate">{miscCatLabel(e)}{e.description ? ` · ${e.description}` : ""}</span>
                     <span className="tabular-nums pl-3 shrink-0">{inr(e.amount)}</span>
@@ -222,15 +226,15 @@ async function TodaySummary() {
                 ))}
               </ul>
               <div className="flex items-center justify-between mt-1.5 text-sm tabular-nums">
-                <span className="text-muted">Total Miscellaneous</span>
-                <span className="font-medium">{inr(t.miscTotal)}</span>
+                <span className="text-muted">{t(lang, "totalMiscLabel")}</span>
+                <span className="font-medium">{inr(day.miscTotal)}</span>
               </div>
             </>
           )}
 
           <div className="flex items-center justify-between mt-2 pt-2 border-t text-sm font-semibold tabular-nums">
-            <span>Grand Total</span>
-            <span>{inr(t.convTotal + t.miscTotal)}</span>
+            <span>{t(lang, "grandTotal")}</span>
+            <span>{inr(day.convTotal + day.miscTotal)}</span>
           </div>
         </div>
       ))}
@@ -238,13 +242,14 @@ async function TodaySummary() {
   );
 }
 
-export default function CheckinPage() {
+export default async function CheckinPage() {
+  const lang = await getLanguage();
   return (
     <div className="space-y-6">
       <VisitEntry />
 
       <Card>
-        <SectionTitle>Today&apos;s Summary</SectionTitle>
+        <SectionTitle>{t(lang, "todaysSummary")}</SectionTitle>
         <Suspense fallback={<SummarySkeleton />}>
           <TodaySummary />
         </Suspense>

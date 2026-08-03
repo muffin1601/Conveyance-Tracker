@@ -3,11 +3,13 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Loader2, Check, X, Search, MapPin, MapPinPlus, Power, Building2, LocateFixed, AlertTriangle,
+  Loader2, Check, X, Search, MapPin, MapPinPlus, Power, Building2,
+  LocateFixed, AlertTriangle, Pencil, Landmark,
 } from "lucide-react";
-import { createSite, setSiteStatus, lookupAddress } from "@/app/actions/roster";
+import { createSite, updateSite, setSiteStatus, lookupAddress } from "@/app/actions/roster";
 import { geocodeCoords } from "@/app/actions/locations";
 import { Card, SectionTitle, Empty } from "@/components/ui";
+import { NavigateButton } from "@/components/NavigateButton";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 
@@ -16,6 +18,9 @@ export interface SiteRow {
   code: string;
   name: string;
   address: string;
+  landmark: string | null;
+  latitude: number;
+  longitude: number;
   city: string | null;
   status: string;
   isOffice: boolean;
@@ -29,14 +34,17 @@ interface Candidate {
 export function LocationManager({ sites }: { sites: SiteRow[] }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  /** null = adding a new location; otherwise the id being corrected. */
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [query, setQuery] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
   const [added, setAdded] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  // New-site form
+  // Add/edit form — shared between both flows.
   const [name, setName] = useState("");
+  const [landmark, setLandmark] = useState("");
   const [search, setSearch] = useState("");
   const [looking, setLooking] = useState(false);
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
@@ -52,15 +60,42 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return sites;
-    return sites.filter((s) => `${s.name} ${s.code} ${s.address} ${s.city ?? ""}`.toLowerCase().includes(q));
+    return sites.filter((s) =>
+      `${s.name} ${s.code} ${s.address} ${s.city ?? ""} ${s.landmark ?? ""}`.toLowerCase().includes(q));
   }, [sites, query]);
 
   const activeCount = sites.filter((s) => s.status === "ACTIVE").length;
 
   function reset() {
-    setName(""); setSearch(""); setCandidates(null); setPicked(null);
+    setName(""); setLandmark(""); setSearch(""); setCandidates(null); setPicked(null);
     setManual(false); setLat(""); setLng(""); setAddress("");
     setLocating(false); setLocateError("");
+  }
+
+  function startAdd() {
+    reset();
+    setEditingId(null);
+    setAdding(true);
+    setError(""); setAdded("");
+  }
+
+  /**
+   * Pre-fills the form with the location's current values so a correction is
+   * a couple of taps, not a re-entry — defaults to manual mode since the
+   * coordinates are already known; "Use My Current Location" below still
+   * works to overwrite them if the admin happens to be at the site.
+   */
+  function startEdit(row: SiteRow) {
+    reset();
+    setEditingId(row.id);
+    setName(row.name);
+    setLandmark(row.landmark ?? "");
+    setManual(true);
+    setAddress(row.address);
+    setLat(String(row.latitude));
+    setLng(String(row.longitude));
+    setAdding(true);
+    setError(""); setAdded("");
   }
 
   /**
@@ -86,6 +121,7 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
             address: g.address, city: g.city, state: g.state,
             postalCode: g.postalCode, latitude, longitude,
           };
+          setManual(false);
           setCandidates([candidate]);
           setPicked(candidate);
           setSearch("");
@@ -140,22 +176,32 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
     if (!coordsValid) { setError("Look up the address, or switch to manual and enter coordinates."); return; }
     if (effectiveAddress.trim().length < 4) { setError("Enter the address."); return; }
 
+    const payload = {
+      name,
+      address: effectiveAddress,
+      landmark,
+      city: manual ? "" : picked?.city ?? "",
+      state: manual ? "" : picked?.state ?? "",
+      pincode: manual ? "" : picked?.postalCode ?? "",
+      latitude: coords!.latitude,
+      longitude: coords!.longitude,
+      geofenceRadius: 200,
+    };
+
     start(async () => {
       try {
-        const r = await createSite({
-          name,
-          address: effectiveAddress,
-          city: manual ? "" : picked?.city ?? "",
-          state: manual ? "" : picked?.state ?? "",
-          pincode: manual ? "" : picked?.postalCode ?? "",
-          latitude: coords!.latitude,
-          longitude: coords!.longitude,
-          geofenceRadius: 200,
-        });
-        if (!r.ok) { setError(r.error); return; }
-        setAdded(`${name.trim()} added as ${r.data.code}.`);
+        if (editingId) {
+          const r = await updateSite(editingId, payload);
+          if (!r.ok) { setError(r.error); return; }
+          setAdded(`${name.trim()} updated.`);
+        } else {
+          const r = await createSite(payload);
+          if (!r.ok) { setError(r.error); return; }
+          setAdded(`${name.trim()} added as ${r.data.code}.`);
+        }
         reset();
         setAdding(false);
+        setEditingId(null);
         router.refresh();
       } catch (e) {
         setError(errorMessage(e));
@@ -198,13 +244,14 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
       )}
 
       {!adding ? (
-        <button type="button" onClick={() => { setAdding(true); setError(""); setAdded(""); }} className="btn-ghost text-sm">
+        <button type="button" onClick={startAdd} className="btn-ghost text-sm">
           <MapPinPlus className="h-4 w-4" /> Add Location
         </button>
       ) : (
         <div className="space-y-3 rounded-lg border p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <MapPin className="h-4 w-4 text-brand" /> New location
+            {editingId ? <Pencil className="h-4 w-4 text-brand" /> : <MapPin className="h-4 w-4 text-brand" />}
+            {editingId ? "Edit location" : "New location"}
           </div>
 
           <div>
@@ -298,6 +345,13 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
             </>
           )}
 
+          <div>
+            <label className="label" htmlFor="site-landmark">Nearby Landmark — optional</label>
+            <input id="site-landmark" className="input" value={landmark}
+              placeholder="e.g. Opposite HP Petrol Pump"
+              onChange={(e) => setLandmark(e.target.value)} />
+          </div>
+
           {coordsValid && (
             <p className="rounded-md border bg-bg p-2.5 text-xs text-muted">
               Will be saved at <span className="tabular-nums text-fg">
@@ -309,9 +363,11 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
           <div className="flex gap-2">
             <button type="button" onClick={submit} disabled={pending} className="btn-primary flex-1 text-sm">
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              {pending ? "Adding…" : "Add Location"}
+              {pending ? "Saving…" : editingId ? "Save Changes" : "Add Location"}
             </button>
-            <button type="button" onClick={() => { setAdding(false); reset(); setError(""); }} className="btn-ghost text-sm">
+            <button type="button"
+              onClick={() => { setAdding(false); setEditingId(null); reset(); setError(""); }}
+              className="btn-ghost text-sm">
               Cancel
             </button>
           </div>
@@ -329,10 +385,10 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
         {shown.length === 0 ? (
           <Empty>No locations match that search.</Empty>
         ) : (
-          <ul className="max-h-80 space-y-1.5 overflow-y-auto">
+          <ul className="max-h-96 space-y-1.5 overflow-y-auto">
             {shown.map((s) => (
               <li key={s.id}
-                className={cn("flex items-center justify-between gap-3 rounded-md border p-2.5 text-sm",
+                className={cn("flex items-center justify-between gap-2 rounded-md border p-2.5 text-sm",
                   s.status !== "ACTIVE" && "opacity-60")}>
                 <span className="min-w-0">
                   <span className="flex items-center gap-2">
@@ -348,17 +404,31 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
                     )}
                   </span>
                   <span className="block truncate text-xs text-muted">{s.city ?? s.address}</span>
+                  {s.landmark && (
+                    <span className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted">
+                      <Landmark className="h-3 w-3 shrink-0" /> {s.landmark}
+                    </span>
+                  )}
                 </span>
-                {!s.isOffice && (
-                  <button type="button" onClick={() => toggle(s)} disabled={pending}
-                    title={s.status === "ACTIVE" ? "Hide from picker" : "Restore to picker"}
-                    className={cn("shrink-0 rounded p-1.5 transition disabled:opacity-50",
-                      s.status === "ACTIVE" ? "text-muted hover:text-red-600" : "text-muted hover:text-green-600")}
-                    aria-label={s.status === "ACTIVE" ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}>
-                    {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : s.status === "ACTIVE" ? <X className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                <span className="flex shrink-0 items-center gap-0.5">
+                  <NavigateButton lat={s.latitude} lng={s.longitude} compact />
+                  <button type="button" onClick={() => startEdit(s)} disabled={pending}
+                    title="Edit location"
+                    className="rounded p-1.5 text-muted transition hover:text-brand disabled:opacity-50"
+                    aria-label={`Edit ${s.name}`}>
+                    <Pencil className="h-4 w-4" />
                   </button>
-                )}
+                  {!s.isOffice && (
+                    <button type="button" onClick={() => toggle(s)} disabled={pending}
+                      title={s.status === "ACTIVE" ? "Hide from picker" : "Restore to picker"}
+                      className={cn("rounded p-1.5 transition disabled:opacity-50",
+                        s.status === "ACTIVE" ? "text-muted hover:text-red-600" : "text-muted hover:text-green-600")}
+                      aria-label={s.status === "ACTIVE" ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}>
+                      {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : s.status === "ACTIVE" ? <X className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                    </button>
+                  )}
+                </span>
               </li>
             ))}
           </ul>

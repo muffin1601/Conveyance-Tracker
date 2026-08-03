@@ -27,6 +27,9 @@ export interface SiteOption {
   name: string;
   city: string | null;
   address: string;
+  landmark: string | null;
+  latitude: number;
+  longitude: number;
 }
 
 export const getActiveEmployees = unstable_cache(
@@ -52,7 +55,7 @@ export const getActiveSites = unstable_cache(
     prisma.site.findMany({
       where: { status: "ACTIVE", deletedAt: null },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, city: true, address: true },
+      select: { id: true, name: true, city: true, address: true, landmark: true, latitude: true, longitude: true },
     }),
   ["active-sites"],
   { tags: [MASTER_DATA_TAG], revalidate: REVALIDATE_SECONDS },
