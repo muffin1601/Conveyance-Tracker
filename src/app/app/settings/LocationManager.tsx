@@ -3,9 +3,10 @@
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
-  Loader2, Check, X, Search, MapPin, MapPinPlus, Power, Building2, LocateFixed,
+  Loader2, Check, X, Search, MapPin, MapPinPlus, Power, Building2, LocateFixed, AlertTriangle,
 } from "lucide-react";
 import { createSite, setSiteStatus, lookupAddress } from "@/app/actions/roster";
+import { geocodeCoords } from "@/app/actions/locations";
 import { Card, SectionTitle, Empty } from "@/components/ui";
 import { errorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
@@ -44,6 +45,9 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
   const [lat, setLat] = useState("");
   const [lng, setLng] = useState("");
   const [address, setAddress] = useState("");
+  /** Standing at the site is the most accurate way to place a farm/plot that has no street listing. */
+  const [locating, setLocating] = useState(false);
+  const [locateError, setLocateError] = useState("");
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -56,6 +60,53 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
   function reset() {
     setName(""); setSearch(""); setCandidates(null); setPicked(null);
     setManual(false); setLat(""); setLng(""); setAddress("");
+    setLocating(false); setLocateError("");
+  }
+
+  /**
+   * Use the device's own GPS fix instead of typing an address — the most
+   * reliable option for a farm/plot with no formal street listing, provided
+   * whoever is adding it is actually standing at the site. Reverse-geocodes
+   * the fix into the same shape as a search result so it drops straight into
+   * the candidate list below.
+   */
+  function useCurrentLocation() {
+    setLocateError(""); setError("");
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setLocateError("This browser does not support location access.");
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      async (pos) => {
+        try {
+          const { latitude, longitude } = pos.coords;
+          const g = await geocodeCoords(latitude, longitude);
+          const candidate: Candidate = {
+            address: g.address, city: g.city, state: g.state,
+            postalCode: g.postalCode, latitude, longitude,
+          };
+          setCandidates([candidate]);
+          setPicked(candidate);
+          setSearch("");
+        } catch (e) {
+          setLocateError(errorMessage(e));
+        } finally {
+          setLocating(false);
+        }
+      },
+      (err) => {
+        setLocating(false);
+        setLocateError(
+          err.code === err.PERMISSION_DENIED
+            ? "Location permission denied. Allow it in your browser settings, or search by address instead."
+            : err.code === err.POSITION_UNAVAILABLE
+              ? "Your location is unavailable right now. Try again or search by address."
+              : "Could not get your location. Try again.",
+        );
+      },
+      { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 },
+    );
   }
 
   function doLookup() {
@@ -178,6 +229,26 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
                   </button>
                 </div>
               </div>
+
+              <div className="flex items-center gap-2">
+                <span className="h-px flex-1 bg-border" />
+                <span className="text-[11px] uppercase tracking-wider text-muted">or</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+
+              <button type="button" onClick={useCurrentLocation} disabled={locating} className="btn-ghost w-full text-sm">
+                {locating ? <Loader2 className="h-4 w-4 animate-spin" /> : <LocateFixed className="h-4 w-4" />}
+                {locating ? "Getting your location…" : "Use My Current Location"}
+              </button>
+              <p className="-mt-1 text-xs text-muted">
+                Best for a farm or plot with no formal address — stand at the exact spot first.
+              </p>
+              {locateError && (
+                <div className="flex items-start gap-2 rounded-md border border-red-500/30 bg-red-500/10 p-2.5 text-sm text-red-600">
+                  <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <span>{locateError}</span>
+                </div>
+              )}
 
               {candidates && candidates.length > 0 && (
                 <ul className="space-y-1.5">
