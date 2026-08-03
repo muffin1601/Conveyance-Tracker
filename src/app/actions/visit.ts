@@ -47,6 +47,8 @@ type Input = z.infer<typeof schema>;
 // A resolved point on the map, with whichever endpoint reference applies.
 interface Point {
   name: string;
+  /** The endpoint's own street address, when it has one — never a different site's. */
+  address: string | null;
   lat: number;
   lng: number;
   siteId: string | null;
@@ -97,6 +99,11 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
   const lng = chained.toLng ?? chained.toSite?.longitude;
   const from: Point = {
     name: chained.toName ?? chained.toSite?.name ?? "Previous location",
+    // A leg's destination address is never persisted (only lat/lng/name were
+    // snapshotted), so a chained origin has no address of its own — showing
+    // the OLD office/origin's address here would be exactly the bug this type
+    // exists to prevent.
+    address: null,
     lat: lat ?? office.lat,
     lng: lng ?? office.lng,
     siteId: chained.toSiteId,
@@ -106,9 +113,10 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
   return { from, sequence };
 }
 
-function siteToPoint(site: { id: string; name: string; latitude: number; longitude: number }): Point {
+function siteToPoint(site: { id: string; name: string; address: string; latitude: number; longitude: number }): Point {
   return {
     name: site.name,
+    address: site.address,
     lat: site.latitude,
     lng: site.longitude,
     siteId: site.id,
@@ -126,7 +134,7 @@ async function resolveOffice(): Promise<Point> {
   return memo("site:office", 5 * 60_000, async () => {
     const office = await prisma.site.findFirst({
       where: { isOffice: true },
-      select: { id: true, name: true, latitude: true, longitude: true },
+      select: { id: true, name: true, address: true, latitude: true, longitude: true },
     });
     if (!office) throw new Error("Office location not configured. Ask an admin to set it up.");
     return siteToPoint(office);
@@ -147,7 +155,7 @@ async function resolveDefaultOrigin(employeeId: string): Promise<Point> {
       select: {
         defaultOriginSite: {
           select: {
-            id: true, name: true, latitude: true, longitude: true,
+            id: true, name: true, address: true, latitude: true, longitude: true,
             status: true, isStartingPoint: true, isOffice: true, deletedAt: true,
           },
         },
@@ -169,11 +177,12 @@ async function resolveDestination(
   if (dest.kind === "SITE") {
     const site = await prisma.site.findUnique({
       where: { id: dest.siteId },
-      select: { id: true, name: true, latitude: true, longitude: true, deletedAt: true },
+      select: { id: true, name: true, address: true, latitude: true, longitude: true, deletedAt: true },
     });
     if (!site || site.deletedAt) throw new Error("Site not found.");
     return {
       name: site.name,
+      address: site.address,
       lat: site.latitude,
       lng: site.longitude,
       siteId: site.id,
@@ -191,6 +200,7 @@ async function resolveDestination(
     }
     return {
       name: loc.locationName,
+      address: loc.address,
       lat: loc.latitude,
       lng: loc.longitude,
       siteId: null,
@@ -202,6 +212,7 @@ async function resolveDestination(
   if (!isValidCoord(dest.lat, dest.lng)) throw new Error("Invalid coordinates.");
   return {
     name: dest.name,
+    address: null,
     lat: dest.lat,
     lng: dest.lng,
     siteId: null,
@@ -379,6 +390,8 @@ export interface JourneyState {
   tripNumber: number;
   /** Where the next trip starts. Read-only unless this is the first trip. */
   fromName: string;
+  /** That location's own street address — null once the day is underway (see resolveSource). */
+  fromAddress: string | null;
   /** True when the next leg starts at the office (day start, or after a reset). */
   atOrigin: boolean;
   totalKm: number;
@@ -433,6 +446,7 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
   return {
     tripNumber: (last ? last.sequence + 1 : 0) + 1,
     fromName: chainedTail ? legToName(chainedTail) : origin.name,
+    fromAddress: chainedTail ? null : origin.address,
     atOrigin: !chainedTail,
     totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
     totalAmount: legs.reduce((s, l) => s + l.amount, 0),

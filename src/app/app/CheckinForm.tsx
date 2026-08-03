@@ -55,7 +55,7 @@ interface Preview {
 }
 
 export function CheckinForm({
-  employees, sites, rates, officeName, officeAddress, initialEmployeeId = "",
+  employees, sites, rates, officeName, initialEmployeeId = "",
 }: {
   /** Restored from the device cookie so a returning user is already selected. */
   initialEmployeeId?: string;
@@ -63,7 +63,6 @@ export function CheckinForm({
   sites: Site[];
   rates: Record<TravelMode, number>;
   officeName: string;
-  officeAddress: string;
 }) {
   const [employeeId, setEmployeeId] = useState(initialEmployeeId);
   const [myLocations, setMyLocations] = useState<CustomLoc[]>([]);
@@ -324,6 +323,13 @@ export function CheckinForm({
   const tripNumber = preview?.tripNumber ?? journey?.tripNumber ?? 1;
   const fromName = preview?.fromName ?? journey?.fromName ?? officeName;
   const atOrigin = journey ? journey.atOrigin : true;
+  // The starting point's OWN address — never a fallback to the head office's.
+  // Previously this box always showed the head office's address whenever the trip was
+  // starting fresh, so an employee whose day starts at another site (e.g. the
+  // showroom) saw that site's name paired with the head office's street
+  // address underneath. Left blank until the real address is known rather
+  // than guessing.
+  const fromAddress = journey?.fromAddress ?? null;
   const destLabel =
     dest?.kind === "GPS" ? dest.name
     : dest?.kind === "CUSTOM" ? myLocations.find((l) => l.id === dest.customLocationId)?.locationName ?? "Saved location"
@@ -376,7 +382,7 @@ export function CheckinForm({
               <Endpoint
                 caption="Starting Point"
                 name={fromName}
-                sub={atOrigin && officeAddress ? officeAddress : undefined}
+                sub={atOrigin && fromAddress ? fromAddress : undefined}
                 locked={!atOrigin}
                 lockNote={!atOrigin ? "Carried over from your last trip" : undefined}
               />
