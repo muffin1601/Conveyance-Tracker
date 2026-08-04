@@ -20,6 +20,8 @@ export interface EmployeeOption {
   name: string;
   designation: string;
   department: string;
+  /** Personal day-start site, if assigned — lets the UI show the starting point instantly. */
+  defaultOriginSiteId: string | null;
 }
 
 export interface SiteOption {
@@ -30,6 +32,7 @@ export interface SiteOption {
   landmark: string | null;
   latitude: number;
   longitude: number;
+  isOffice: boolean;
 }
 
 export const getActiveEmployees = unstable_cache(
@@ -37,7 +40,7 @@ export const getActiveEmployees = unstable_cache(
     prisma.employee.findMany({
       where: { status: "ACTIVE", deletedAt: null },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, designation: true, department: true },
+      select: { id: true, name: true, designation: true, department: true, defaultOriginSiteId: true },
     }),
   ["active-employees"],
   { tags: [MASTER_DATA_TAG], revalidate: REVALIDATE_SECONDS },
@@ -55,7 +58,7 @@ export const getActiveSites = unstable_cache(
     prisma.site.findMany({
       where: { status: "ACTIVE", deletedAt: null },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, city: true, address: true, landmark: true, latitude: true, longitude: true },
+      select: { id: true, name: true, city: true, address: true, landmark: true, latitude: true, longitude: true, isOffice: true },
     }),
   ["active-sites"],
   { tags: [MASTER_DATA_TAG], revalidate: REVALIDATE_SECONDS },

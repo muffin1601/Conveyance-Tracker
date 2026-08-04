@@ -23,10 +23,14 @@ import { cn, inr, km } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import { t, type Lang, type DictKey } from "@/lib/i18n";
 
-interface Employee { id: string; name: string; designation: string; department: string }
+interface Employee {
+  id: string; name: string; designation: string; department: string;
+  defaultOriginSiteId: string | null;
+}
 interface Site {
   id: string; name: string; city: string | null; address: string;
   landmark: string | null; latitude: number; longitude: number;
+  isOffice: boolean;
 }
 interface CustomLoc {
   id: string; locationName: string; address: string | null;
@@ -212,6 +216,10 @@ export function CheckinForm({
 
   const onSelectEmployee = useCallback((id: string) => {
     setEmployeeId(id);
+    // Drop the previous person's journey right away — until the fresh fetch
+    // lands, the starting point falls back to this employee's assigned origin
+    // (see expectedOrigin) instead of showing someone else's data.
+    setJourney(null);
     // Persist who this device belongs to, then refresh so Today's Summary
     // re-renders scoped to this employee instead of showing everyone.
     void setActiveEmployee(id).then(() => router.refresh()).catch(() => {});
@@ -326,16 +334,30 @@ export function CheckinForm({
   }
 
   // ── Derived display values ────────────────────────────────────────────
+  // The employee's assigned day-start site, resolved from data already on the
+  // client. Shown the instant a name is selected — previously the starting
+  // point read as the head office until getJourneyState's round-trip landed,
+  // which for showroom-based staff looked wrong for several seconds.
+  const expectedOrigin = useMemo(() => {
+    if (!employeeId) return null;
+    const emp = employees.find((e) => e.id === employeeId);
+    return (
+      (emp?.defaultOriginSiteId
+        ? sites.find((s) => s.id === emp.defaultOriginSiteId)
+        : undefined) ?? sites.find((s) => s.isOffice) ?? null
+    );
+  }, [employeeId, employees, sites]);
+
   const tripNumber = preview?.tripNumber ?? journey?.tripNumber ?? 1;
-  const fromName = preview?.fromName ?? journey?.fromName ?? officeName;
+  const fromName = preview?.fromName ?? journey?.fromName ?? expectedOrigin?.name ?? officeName;
   const atOrigin = journey ? journey.atOrigin : true;
   // The starting point's OWN address — never a fallback to the head office's.
   // Previously this box always showed the head office's address whenever the trip was
   // starting fresh, so an employee whose day starts at another site (e.g. the
   // showroom) saw that site's name paired with the head office's street
-  // address underneath. Left blank until the real address is known rather
-  // than guessing.
-  const fromAddress = journey?.fromAddress ?? null;
+  // address underneath. Before the journey loads, the assigned origin's own
+  // address stands in — same site, so it can't mismatch the name above it.
+  const fromAddress = journey ? journey.fromAddress : expectedOrigin?.address ?? null;
   const destLabel =
     dest?.kind === "GPS" ? dest.name
     : dest?.kind === "CUSTOM" ? myLocations.find((l) => l.id === dest.customLocationId)?.locationName ?? t(lang, "savedLocationLabel")
@@ -405,8 +427,8 @@ export function CheckinForm({
                 sub={atOrigin && fromAddress ? fromAddress : undefined}
                 locked={!atOrigin}
                 lockNote={!atOrigin ? t(lang, "carriedOver") : undefined}
-                lat={journey?.fromLat ?? null}
-                lng={journey?.fromLng ?? null}
+                lat={journey?.fromLat ?? expectedOrigin?.latitude ?? null}
+                lng={journey?.fromLng ?? expectedOrigin?.longitude ?? null}
                 autoLabel={t(lang, "auto")}
               />
               <div className="flex justify-center">
