@@ -1,5 +1,19 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ServiceWorkerRegistrar } from "@/components/ServiceWorkerRegistrar";
+
+/**
+ * Applies the saved theme before the browser paints, so a dark-mode user never
+ * sees a white flash. This has to be a blocking inline script in <head> — any
+ * React-driven alternative runs after first paint, which is exactly the flash
+ * it exists to prevent. It is a static string, so there is nothing to inject.
+ */
+const THEME_SCRIPT = `try{
+  var t = localStorage.getItem('theme');
+  if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+    document.documentElement.classList.add('dark');
+  }
+}catch(e){}`;
 
 export const metadata: Metadata = {
   title: "Watcon Conveyance Tracker",
@@ -18,23 +32,12 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en" suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body suppressHydrationWarning>
         {children}
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              try {
-                if ('serviceWorker' in navigator) {
-                  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(()=>{}));
-                }
-                var t = localStorage.getItem('theme');
-                if (t === 'dark' || (!t && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
-                  document.documentElement.classList.add('dark');
-                }
-              } catch(e){}
-            `,
-          }}
-        />
+        <ServiceWorkerRegistrar />
       </body>
     </html>
   );

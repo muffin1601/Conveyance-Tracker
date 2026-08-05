@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import {
   Loader2, Check, X, Search, MapPin, MapPinPlus, Power, Building2,
-  LocateFixed, AlertTriangle, Pencil, Landmark,
+  LocateFixed, AlertTriangle, Pencil, Landmark, Download,
 } from "lucide-react";
 import { createSite, updateSite, setSiteStatus, lookupAddress } from "@/app/actions/roster";
 import { geocodeCoords } from "@/app/actions/locations";
@@ -244,9 +244,21 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
       )}
 
       {!adding ? (
-        <button type="button" onClick={startAdd} className="btn-ghost text-sm">
-          <MapPinPlus className="h-4 w-4" /> Add Location
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={startAdd} className="btn-ghost text-sm">
+            <MapPinPlus className="h-4 w-4" /> Add Location
+          </button>
+          {/*
+            A plain link, not a fetch — the browser handles the download and the
+            session cookie rides along, which is what the endpoint's admin gate
+            checks. Every row carries a Google Maps link so the saved pin can be
+            checked against where the site actually is.
+          */}
+          <a href="/api/export/locations" className="btn-ghost text-sm"
+            title="Download all locations with coordinates and Google Maps links">
+            <Download className="h-4 w-4" /> Download CSV
+          </a>
+        </div>
       ) : (
         <div className="space-y-3 rounded-lg border p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
