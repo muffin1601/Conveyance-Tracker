@@ -7,7 +7,7 @@ import { memo } from "@/lib/cache";
 import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
-import { attempt, ok, fail, type ActionResult } from "@/lib/result";
+import { attempt, ok, fail, UserError, type ActionResult } from "@/lib/result";
 import { getSettings } from "@/lib/settings";
 import { isSettingsUnlocked } from "./settings";
 import { purgeBillObject, auditBill } from "./bills";
@@ -136,7 +136,7 @@ async function resolveOffice(): Promise<Point> {
       where: { isOffice: true },
       select: { id: true, name: true, address: true, latitude: true, longitude: true },
     });
-    if (!office) throw new Error("Office location not configured. Ask an admin to set it up.");
+    if (!office) throw new UserError("Office location not configured. Ask an admin to set it up.");
     return siteToPoint(office);
   });
 }
@@ -179,7 +179,7 @@ async function resolveDestination(
       where: { id: dest.siteId },
       select: { id: true, name: true, address: true, latitude: true, longitude: true, deletedAt: true },
     });
-    if (!site || site.deletedAt) throw new Error("Site not found.");
+    if (!site || site.deletedAt) throw new UserError("Site not found.");
     return {
       name: site.name,
       address: site.address,
@@ -192,11 +192,11 @@ async function resolveDestination(
   }
   if (dest.kind === "CUSTOM") {
     const loc = await prisma.userCustomLocation.findUnique({ where: { id: dest.customLocationId } });
-    if (!loc || loc.status !== "ACTIVE") throw new Error("Location not found.");
+    if (!loc || loc.status !== "ACTIVE") throw new UserError("Location not found.");
     // Personal locations are only usable by their owner (global ones by anyone).
-    if (!loc.isGlobal && loc.employeeId !== employeeId) throw new Error("Location not found.");
+    if (!loc.isGlobal && loc.employeeId !== employeeId) throw new UserError("Location not found.");
     if (loc.latitude == null || loc.longitude == null) {
-      throw new Error("This location has no coordinates; enter distance manually.");
+      throw new UserError("This location has no coordinates; enter distance manually.");
     }
     return {
       name: loc.locationName,
@@ -209,7 +209,7 @@ async function resolveDestination(
     };
   }
   // GPS — an unsaved geolocated point.
-  if (!isValidCoord(dest.lat, dest.lng)) throw new Error("Invalid coordinates.");
+  if (!isValidCoord(dest.lat, dest.lng)) throw new UserError("Invalid coordinates.");
   return {
     name: dest.name,
     address: null,
@@ -279,36 +279,83 @@ async function resolveLegContext(
 /** A repeat of the previous leg within this window is treated as a double submit. */
 const DUPLICATE_WINDOW_MS = 60_000;
 
-/** Preview the next leg without persisting — powers the live estimate on the form. */
-export async function previewVisit(input: Input) {
-  const { employeeId, destination, mode, fareActual, manualDistanceKm } = schema.parse(input);
-  const workDate = todayKey();
-  const { from, to, sequence, settings } = await resolveLegContext(employeeId, workDate, destination);
-
-  if (isSamePlace(from, to)) {
-    return {
-      fromName: from.name, toName: to.name, km: 0, amount: 0,
-      tripNumber: sequence + 1, alreadyHere: true,
-    };
-  }
-
-  const dist = await computeLeg(from, to, manualDistanceKm);
-  const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
-  return {
-    fromName: from.name,
-    toName: to.name,
-    km: dist.distanceKm,
-    amount,
-    durationMin: dist.durationMin,
-    source: dist.source,
-    tripNumber: sequence + 1,
-    alreadyHere: false,
-  };
+export interface VisitPreview {
+  fromName: string;
+  toName: string;
+  km: number;
+  amount: number;
+  durationMin?: number | null;
+  source?: string;
+  tripNumber: number;
+  alreadyHere: boolean;
 }
 
-/** Log one leg. Source is auto-resolved; distance & amount computed server-side. */
-export async function logVisit(input: Input) {
-  const { employeeId, destination, mode, fareActual, manualDistanceKm } = schema.parse(input);
+/**
+ * Validate the form payload into a typed input, or the message explaining what
+ * is wrong with it. Zod's own `parse` throws a JSON blob of issues, which the
+ * production build then redacts to nothing useful — so the first issue's
+ * message (they are all written for the user) is returned instead.
+ */
+function parseInput(input: Input): { ok: true; value: Input } | { ok: false; error: string } {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) return { ok: true, value: parsed.data };
+  const first = parsed.error.issues[0];
+  return { ok: false, error: first?.message || "Check the form and try again." };
+}
+
+/** Preview the next leg without persisting — powers the live estimate on the form. */
+export async function previewVisit(input: Input): Promise<ActionResult<VisitPreview>> {
+  return attempt(async () => {
+    const parsed = parseInput(input);
+    if (!parsed.ok) return fail(parsed.error);
+    const { employeeId, destination, mode, fareActual, manualDistanceKm } = parsed.value;
+    const workDate = todayKey();
+    const { from, to, sequence, settings } = await resolveLegContext(employeeId, workDate, destination);
+
+    if (isSamePlace(from, to)) {
+      return ok({
+        fromName: from.name, toName: to.name, km: 0, amount: 0,
+        tripNumber: sequence + 1, alreadyHere: true,
+      });
+    }
+
+    const dist = await computeLeg(from, to, manualDistanceKm);
+    const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
+    return ok({
+      fromName: from.name,
+      toName: to.name,
+      km: dist.distanceKm,
+      amount,
+      durationMin: dist.durationMin,
+      source: dist.source,
+      tripNumber: sequence + 1,
+      alreadyHere: false,
+    });
+  }, "previewVisit");
+}
+
+export interface LoggedVisit {
+  km: number;
+  amount: number;
+  from: string;
+  site: string;
+  employee: string;
+  tripNumber: number;
+}
+
+/**
+ * Log one leg. Source is auto-resolved; distance & amount computed server-side.
+ *
+ * Every failure the employee can act on is RETURNED (see lib/result). This used
+ * to throw, which a production build turns into an opaque 500 plus the generic
+ * "Something went wrong" banner — so a routine "you are already at that site"
+ * looked like the app was broken.
+ */
+export async function logVisit(input: Input): Promise<ActionResult<LoggedVisit>> {
+  return attempt(async () => {
+  const parsed = parseInput(input);
+  if (!parsed.ok) return fail(parsed.error);
+  const { employeeId, destination, mode, fareActual, manualDistanceKm } = parsed.value;
   const workDate = todayKey();
 
   const [employee, ctx] = await Promise.all([
@@ -318,12 +365,12 @@ export async function logVisit(input: Input) {
     }),
     resolveLegContext(employeeId, workDate, destination),
   ]);
-  if (!employee || employee.deletedAt) throw new Error("Employee not found.");
-  if (employee.status !== "ACTIVE") throw new Error("This employee is no longer active.");
+  if (!employee || employee.deletedAt) return fail("Employee not found.");
+  if (employee.status !== "ACTIVE") return fail("This employee is no longer active.");
 
   const { from, to, sequence, settings, lastLeg } = ctx;
   if (isSamePlace(from, to)) {
-    throw new Error(`You are already at ${to.name}. Pick a different destination.`);
+    return fail(`You are already at ${to.name}. Pick a different destination.`);
   }
 
   // Duplicate guard: the same leg logged twice within a minute is a double
@@ -336,9 +383,7 @@ export async function logVisit(input: Input) {
     lastLeg.fromName === from.name &&
     Date.now() - lastLeg.createdAt.getTime() < DUPLICATE_WINDOW_MS
   ) {
-    throw new Error(
-      `This trip (${from.name} → ${to.name}) was just logged. Refresh to see it.`,
-    );
+    return fail(`This trip (${from.name} → ${to.name}) was just logged. Refresh to see it.`);
   }
 
   const dist = await computeLeg(from, to, manualDistanceKm);
@@ -372,15 +417,15 @@ export async function logVisit(input: Input) {
   });
 
   revalidatePath("/app");
-  return {
-    ok: true,
+  return ok({
     km: dist.distanceKm,
     amount,
     from: from.name,
     site: to.name,
     employee: employee.name,
     tripNumber: sequence + 1,
-  };
+  });
+  }, "logVisit");
 }
 
 // ── Journey state (Issue 3 / 4) ───────────────────────────────────────────

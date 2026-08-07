@@ -259,9 +259,10 @@ export function CheckinForm({
         fareActual: useActual ? fareNum : undefined,
         manualDistanceKm: manualActive ? manualKmNum : undefined,
       })
-        .then((p) => {
+        .then((r) => {
           if (seq !== previewSeq.current) return; // a newer request superseded this one
-          setPreview(p);
+          if (!r.ok) { setPreview(null); setPreviewError(r.error); return; }
+          setPreview(r.data);
         })
         .catch((e) => {
           if (seq !== previewSeq.current) return;
@@ -307,8 +308,13 @@ export function CheckinForm({
           fareActual: useActual ? fareNum : undefined,
           manualDistanceKm: manualActive ? manualKmNum : undefined,
         });
+        // An expected failure ("you are already at X", "that trip was just
+        // logged") comes back as a returned error, not a throw — a production
+        // build would redact a thrown one into a bare 500.
+        if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
+        const v = r.data;
         if (selectValue) remember(selectValue);
-        setMsg({ ok: true, text: t(lang, "tripLoggedMsg", { n: String(r.tripNumber), from: r.from, to: r.site, km: km(r.km), amount: inr(r.amount) }) });
+        setMsg({ ok: true, text: t(lang, "tripLoggedMsg", { n: String(v.tripNumber), from: v.from, to: v.site, km: km(v.km), amount: inr(v.amount) }) });
         setDest(null); setFare(""); setManualKm(""); setUseManual(false); setPreview(null);
         await refreshJourney(employeeId);
       } catch (e) {

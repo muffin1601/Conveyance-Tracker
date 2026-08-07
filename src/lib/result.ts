@@ -27,6 +27,21 @@ export function fail<T = void>(error: string): ActionResult<T> {
 }
 
 /**
+ * A failure the user is meant to read ("You are already at X").
+ *
+ * Deeply-nested helpers (resolving the office, a destination, a saved location)
+ * cannot `return fail(...)` — they return a value, not a result — so they raise
+ * this instead. `attempt` unwraps it into a returned error, which survives the
+ * production build; anything else stays redacted.
+ */
+export class UserError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "UserError";
+  }
+}
+
+/**
  * Run a server action body, turning an expected failure into a returned error.
  * `expected` marks messages that were written for the user; anything else is
  * logged server-side and reported generically so internals never leak.
@@ -38,6 +53,7 @@ export async function attempt<T>(
   try {
     return await run();
   } catch (e) {
+    if (e instanceof UserError) return { ok: false, error: e.message };
     console.error(`[${context}]`, e);
     return {
       ok: false,
