@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { memo } from "@/lib/cache";
 import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
+import { checkGpsFix, resolveGeofenceRadius, type GpsCheck } from "@/lib/gps";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
 import { attempt, ok, fail, UserError, type ActionResult } from "@/lib/result";
 import { getSettings } from "@/lib/settings";
@@ -42,7 +43,38 @@ const schema = z.object({
     .optional(),
 });
 
+/**
+ * The device fix that authorises a visit. Required — there is no bypass flag,
+ * and no client-supplied "verified"/"withinRadius" boolean is accepted: the
+ * server re-runs the entire check against master-data coordinates it looks up
+ * itself, so a hand-crafted request gains nothing beyond what a real phone
+ * standing at the site could send.
+ */
+const gpsFixSchema = z.object({
+  lat: z.number(),
+  lng: z.number(),
+  accuracy: z.number().positive(),
+  capturedAt: z.number().int().positive(),
+});
+
+/**
+ * Logging a visit additionally requires the GPS fix and an idempotency key; a
+ * preview needs neither.
+ */
+const logSchema = schema.extend({
+  gps: gpsFixSchema,
+  /**
+   * Device-generated id, minted before the visit was stored locally. The
+   * unique constraint on Journey.clientVisitId turns any resubmission into a
+   * lookup of the row the first attempt created.
+   */
+  clientVisitId: z.string().trim().min(8).max(64),
+  /** When the visit was made on the device — may predate the sync by days. */
+  visitAt: z.number().int().positive(),
+});
+
 type Input = z.infer<typeof schema>;
+type LogInput = z.infer<typeof logSchema>;
 
 // A resolved point on the map, with whichever endpoint reference applies.
 interface Point {
@@ -54,6 +86,11 @@ interface Point {
   siteId: string | null;
   customLocationId: string | null;
   locationType: "MASTER" | "GPS" | "CUSTOM";
+  /**
+   * The location's own geofence, when it has one (master sites do). Null for
+   * saved/ad-hoc points, which fall back to the company-wide radius.
+   */
+  geofenceRadius: number | null;
 }
 
 /**
@@ -109,11 +146,16 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
     siteId: chained.toSiteId,
     customLocationId: chained.toCustomLocationId,
     locationType: (chained.locationType as Point["locationType"]) ?? "MASTER",
+    // Only a DESTINATION's radius is ever enforced, so the origin never needs one.
+    geofenceRadius: null,
   };
   return { from, sequence };
 }
 
-function siteToPoint(site: { id: string; name: string; address: string; latitude: number; longitude: number }): Point {
+function siteToPoint(site: {
+  id: string; name: string; address: string; latitude: number; longitude: number;
+  geofenceRadius?: number | null;
+}): Point {
   return {
     name: site.name,
     address: site.address,
@@ -122,6 +164,7 @@ function siteToPoint(site: { id: string; name: string; address: string; latitude
     siteId: site.id,
     customLocationId: null,
     locationType: "MASTER" as const,
+    geofenceRadius: site.geofenceRadius ?? null,
   };
 }
 
@@ -169,6 +212,40 @@ async function resolveDefaultOrigin(employeeId: string): Promise<Point> {
   });
 }
 
+const NO_COORDS_MESSAGE =
+  "GPS coordinates are not configured for this location. Please contact the administrator.";
+
+/**
+ * Turn a rejected GPS check into the sentence the employee reads. Never leaks
+ * a browser error code or a raw coordinate.
+ */
+function gpsCheckMessage(check: GpsCheck, destinationName: string): string {
+  switch (check.code) {
+    case "NO_TARGET_COORDS":
+      return NO_COORDS_MESSAGE;
+    case "INVALID_FIX":
+      return "Your location could not be confirmed. Please try again.";
+    case "POOR_ACCURACY":
+      return "Your location signal is too weak to confirm where you are. Please move outside or near a window and try again.";
+    case "STALE_FIX":
+      return "Your location reading has expired. Please check your location again.";
+    case "OUT_OF_RANGE":
+      return (
+        `You are currently outside the allowed location area. ` +
+        `Please move closer to ${destinationName} and try again.` +
+        (check.distanceM != null
+          ? ` (You are about ${formatMetres(check.distanceM)} away; you need to be within ${formatMetres(check.radiusM)}.)`
+          : "")
+      );
+    default:
+      return "Your location could not be confirmed. Please try again.";
+  }
+}
+
+function formatMetres(m: number): string {
+  return m >= 1000 ? `${(m / 1000).toFixed(1)} km` : `${Math.round(m)} m`;
+}
+
 /** Turn a destination input into a resolved Point. */
 async function resolveDestination(
   dest: Input["destination"],
@@ -177,26 +254,24 @@ async function resolveDestination(
   if (dest.kind === "SITE") {
     const site = await prisma.site.findUnique({
       where: { id: dest.siteId },
-      select: { id: true, name: true, address: true, latitude: true, longitude: true, deletedAt: true },
+      select: {
+        id: true, name: true, address: true, latitude: true, longitude: true,
+        geofenceRadius: true, status: true, deletedAt: true,
+      },
     });
-    if (!site || site.deletedAt) throw new UserError("Site not found.");
-    return {
-      name: site.name,
-      address: site.address,
-      lat: site.latitude,
-      lng: site.longitude,
-      siteId: site.id,
-      customLocationId: null,
-      locationType: "MASTER",
-    };
+    if (!site || site.deletedAt || site.status !== "ACTIVE") throw new UserError("Site not found.");
+    // A site whose coordinates were never filled in cannot be verified against,
+    // and must not be waved through just because a fix was obtained.
+    if (!isValidCoord(site.latitude, site.longitude)) throw new UserError(NO_COORDS_MESSAGE);
+    return siteToPoint(site);
   }
   if (dest.kind === "CUSTOM") {
     const loc = await prisma.userCustomLocation.findUnique({ where: { id: dest.customLocationId } });
     if (!loc || loc.status !== "ACTIVE") throw new UserError("Location not found.");
     // Personal locations are only usable by their owner (global ones by anyone).
     if (!loc.isGlobal && loc.employeeId !== employeeId) throw new UserError("Location not found.");
-    if (loc.latitude == null || loc.longitude == null) {
-      throw new UserError("This location has no coordinates; enter distance manually.");
+    if (loc.latitude == null || loc.longitude == null || !isValidCoord(loc.latitude, loc.longitude)) {
+      throw new UserError(NO_COORDS_MESSAGE);
     }
     return {
       name: loc.locationName,
@@ -206,9 +281,12 @@ async function resolveDestination(
       siteId: null,
       customLocationId: loc.id,
       locationType: loc.source === "GPS" ? "GPS" : "CUSTOM",
+      geofenceRadius: null, // no per-location radius — company default applies
     };
   }
-  // GPS — an unsaved geolocated point.
+  // GPS — an unsaved geolocated point. The coordinates in the payload are only
+  // a preview convenience; logVisit replaces them with the verified fix, so a
+  // forged pair cannot become a destination.
   if (!isValidCoord(dest.lat, dest.lng)) throw new UserError("Invalid coordinates.");
   return {
     name: dest.name,
@@ -218,6 +296,7 @@ async function resolveDestination(
     siteId: null,
     customLocationId: null,
     locationType: "GPS",
+    geofenceRadius: null,
   };
 }
 
@@ -344,19 +423,100 @@ export interface LoggedVisit {
 }
 
 /**
- * Log one leg. Source is auto-resolved; distance & amount computed server-side.
- *
- * Every failure the employee can act on is RETURNED (see lib/result). This used
- * to throw, which a production build turns into an opaque 500 plus the generic
- * "Something went wrong" banner — so a routine "you are already at that site"
- * looked like the app was broken.
+ * What the device's sync loop needs to know. Distinguishing a permanent
+ * refusal from a temporary one is the whole difference between "retry this
+ * forever" and "tell the employee something is wrong with this one visit".
  */
-export async function logVisit(input: Input): Promise<ActionResult<LoggedVisit>> {
-  return attempt(async () => {
-  const parsed = parseInput(input);
-  if (!parsed.ok) return fail(parsed.error);
-  const { employeeId, destination, mode, fareActual, manualDistanceKm } = parsed.value;
-  const workDate = todayKey();
+export type SyncOutcome =
+  | { status: "SYNCED"; serverId: string; visit: LoggedVisit }
+  /** Already stored — this exact visit was submitted before. Not an error. */
+  | { status: "DUPLICATE"; serverId: string | null; visit: LoggedVisit | null }
+  /** The server has judged it and said no. Retrying will not change that. */
+  | { status: "REJECTED"; reason: string }
+  /** Something on our side is unwell. Keep the visit and come back later. */
+  | { status: "RETRY"; reason: string };
+
+/** The message shown for any server-side problem the employee did not cause. */
+const RETRY_MESSAGE = "Visit saved. It will sync automatically.";
+
+/** Prisma's unique-constraint error, without importing the error classes. */
+function isUniqueViolation(e: unknown, field: string): boolean {
+  const err = e as { code?: string; meta?: { target?: unknown } };
+  if (err?.code !== "P2002") return false;
+  const target = err.meta?.target;
+  const fields = Array.isArray(target) ? target.map(String) : [String(target ?? "")];
+  return fields.some((f) => f.includes(field));
+}
+
+function loggedVisitFrom(row: {
+  distanceKm: number; amount: number; fromName: string | null; toName: string | null; sequence: number;
+}, employeeName: string): LoggedVisit {
+  return {
+    km: row.distanceKm,
+    amount: row.amount,
+    from: row.fromName ?? "Starting point",
+    site: row.toName ?? "Destination",
+    employee: employeeName,
+    tripNumber: row.sequence + 1,
+  };
+}
+
+/**
+ * Submit one visit. Idempotent on `clientVisitId`: the same key always
+ * resolves to the same Journey row, so a retry after a lost response — the
+ * classic way offline queues duplicate data — returns the original visit
+ * instead of creating a second one.
+ *
+ * GPS verification is re-run here in full. Offline changes only WHEN a visit
+ * arrives, never WHETHER it was verified.
+ */
+export async function syncVisit(input: LogInput): Promise<SyncOutcome> {
+  try {
+    return await runSyncVisit(input);
+  } catch (e) {
+    if (e instanceof UserError) return { status: "REJECTED", reason: e.message };
+    // A database hiccup, a dropped pool connection, a provider timeout: the
+    // visit is still safely on the device, so say nothing alarming and let the
+    // queue try again.
+    console.error("[syncVisit]", e);
+    return { status: "RETRY", reason: RETRY_MESSAGE };
+  }
+}
+
+async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
+  const parsed = logSchema.safeParse(input);
+  if (!parsed.success) {
+    const first = parsed.error.issues[0];
+    const isGps = first?.path?.[0] === "gps";
+    return {
+      status: "REJECTED",
+      reason: isGps
+        ? "Your current location is required to log a visit. Please allow location access and try again."
+        : first?.message || "Check the form and try again.",
+    };
+  }
+  const { employeeId, destination, mode, fareActual, manualDistanceKm, gps, clientVisitId, visitAt } = parsed.data;
+
+  // ── Idempotency, before anything else ───────────────────────────────
+  const already = await prisma.journey.findUnique({
+    where: { clientVisitId },
+    select: {
+      id: true, distanceKm: true, amount: true, fromName: true, toName: true, sequence: true,
+      employee: { select: { name: true } },
+    },
+  });
+  if (already) {
+    return {
+      status: "DUPLICATE",
+      serverId: already.id,
+      visit: loggedVisitFrom(already, already.employee.name),
+    };
+  }
+
+  // The day a queued visit belongs to is the day it was MADE, not the day it
+  // reached the server — otherwise a visit logged at 9pm with no signal would
+  // land on tomorrow's sheet, and chain from the wrong starting point.
+  const workDate = todayKey(new Date(visitAt));
 
   const [employee, ctx] = await Promise.all([
     prisma.employee.findUnique({
@@ -365,12 +525,35 @@ export async function logVisit(input: Input): Promise<ActionResult<LoggedVisit>>
     }),
     resolveLegContext(employeeId, workDate, destination),
   ]);
-  if (!employee || employee.deletedAt) return fail("Employee not found.");
-  if (employee.status !== "ACTIVE") return fail("This employee is no longer active.");
+  if (!employee || employee.deletedAt) return { status: "REJECTED", reason: "Employee not found." };
+  if (employee.status !== "ACTIVE") {
+    return { status: "REJECTED", reason: "This employee is no longer active." };
+  }
 
-  const { from, to, sequence, settings, lastLeg } = ctx;
+  const { from, sequence, settings, lastLeg } = ctx;
+  let { to } = ctx;
+
+  // ── GPS verification (server authoritative) ─────────────────────────
+  // Re-run in full here. The client shows the same verdict live, but that is
+  // only for the employee's benefit — nothing it reports is trusted, and no
+  // "gpsVerified" style flag exists in the payload to trust in the first place.
+  //
+  // For an ad-hoc GPS destination the destination IS wherever the employee is
+  // standing, so it is taken FROM the verified fix rather than from the
+  // request body; forged destination coordinates therefore have no effect.
+  if (to.locationType === "GPS" && !to.siteId && !to.customLocationId) {
+    to = { ...to, lat: gps.lat, lng: gps.lng };
+  }
+  const radiusM = resolveGeofenceRadius(to.geofenceRadius, settings.geofenceRadius);
+  // `visitAt` anchors the freshness rule to when the visit was made, so a
+  // visit queued offline stays valid until it can be delivered.
+  const gpsCheck = checkGpsFix(gps, { lat: to.lat, lng: to.lng }, radiusM, { visitAt });
+  if (gpsCheck.code !== "OK") {
+    return { status: "REJECTED", reason: gpsCheckMessage(gpsCheck, to.name) };
+  }
+
   if (isSamePlace(from, to)) {
-    return fail(`You are already at ${to.name}. Pick a different destination.`);
+    return { status: "REJECTED", reason: `You are already at ${to.name}. Pick a different destination.` };
   }
 
   // Duplicate guard: the same leg logged twice within a minute is a double
@@ -383,49 +566,103 @@ export async function logVisit(input: Input): Promise<ActionResult<LoggedVisit>>
     lastLeg.fromName === from.name &&
     Date.now() - lastLeg.createdAt.getTime() < DUPLICATE_WINDOW_MS
   ) {
-    return fail(`This trip (${from.name} → ${to.name}) was just logged. Refresh to see it.`);
+    return {
+      status: "REJECTED",
+      reason: `This trip (${from.name} → ${to.name}) was just logged. Refresh to see it.`,
+    };
   }
 
   const dist = await computeLeg(from, to, manualDistanceKm);
   const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
 
-  await prisma.journey.create({
-    data: {
-      employeeId,
-      workDate,
-      fromSiteId: from.siteId,
-      toSiteId: to.siteId,
-      fromCustomLocationId: from.customLocationId,
-      toCustomLocationId: to.customLocationId,
-      fromName: from.name,
-      toName: to.name,
-      fromLat: from.lat,
-      fromLng: from.lng,
-      toLat: to.lat,
-      toLng: to.lng,
-      locationType: to.locationType,
-      manualDistance: dist.source === "MANUAL",
-      sequence,
-      distanceKm: dist.distanceKm,
-      roadKm: dist.roadKm,
-      haversineKm: dist.haversineKm,
-      durationMin: dist.durationMin,
-      source: dist.source,
-      vehicleType: mode,
-      amount,
-    },
-  });
+  // Two tabs (or a tab and a retry) can reach this line concurrently with the
+  // same key — the pre-flight lookup above cannot see a row that has not been
+  // committed yet. The unique index is the real arbiter; a collision here
+  // means the other writer won, so the visit exists and this is a duplicate.
+  const created = await prisma.journey
+    .create({
+      data: {
+        clientVisitId,
+        employeeId,
+        workDate,
+        fromSiteId: from.siteId,
+        toSiteId: to.siteId,
+        fromCustomLocationId: from.customLocationId,
+        toCustomLocationId: to.customLocationId,
+        fromName: from.name,
+        toName: to.name,
+        fromLat: from.lat,
+        fromLng: from.lng,
+        toLat: to.lat,
+        toLng: to.lng,
+        locationType: to.locationType,
+        manualDistance: dist.source === "MANUAL",
+        sequence,
+        distanceKm: dist.distanceKm,
+        roadKm: dist.roadKm,
+        haversineKm: dist.haversineKm,
+        durationMin: dist.durationMin,
+        source: dist.source,
+        vehicleType: mode,
+        amount,
+        // Proof of presence, exactly as the server measured it.
+        gpsLat: gps.lat,
+        gpsLng: gps.lng,
+        gpsAccuracy: gpsCheck.accuracyM,
+        gpsCapturedAt: new Date(gps.capturedAt),
+        gpsDistanceM: gpsCheck.distanceM,
+        gpsRadiusM: gpsCheck.radiusM,
+      },
+    })
+    .catch((e: unknown) => {
+      if (isUniqueViolation(e, "clientVisitId")) return null;
+      throw e;
+    });
+
+  if (!created) {
+    const winner = await prisma.journey.findUnique({
+      where: { clientVisitId },
+      select: {
+        id: true, distanceKm: true, amount: true, fromName: true, toName: true, sequence: true,
+        employee: { select: { name: true } },
+      },
+    });
+    return {
+      status: "DUPLICATE",
+      serverId: winner?.id ?? null,
+      visit: winner ? loggedVisitFrom(winner, winner.employee.name) : null,
+    };
+  }
 
   revalidatePath("/app");
-  return ok({
-    km: dist.distanceKm,
-    amount,
-    from: from.name,
-    site: to.name,
-    employee: employee.name,
-    tripNumber: sequence + 1,
-  });
-  }, "logVisit");
+  return {
+    status: "SYNCED",
+    serverId: created.id,
+    visit: {
+      km: created.distanceKm,
+      amount: created.amount,
+      from: from.name,
+      site: to.name,
+      employee: employee.name,
+      tripNumber: created.sequence + 1,
+    },
+  };
+}
+
+/**
+ * Log one leg directly, without going through the device queue.
+ *
+ * Kept as the original returned-error contract for any caller that wants a
+ * simple "did it work" answer. The Check In screen no longer uses it: it
+ * writes to the device queue first (never lose a verified visit) and drains
+ * that queue through `syncVisit`.
+ */
+export async function logVisit(input: LogInput): Promise<ActionResult<LoggedVisit>> {
+  const outcome = await syncVisit(input);
+  if (outcome.status === "SYNCED") return ok(outcome.visit);
+  if (outcome.status === "DUPLICATE" && outcome.visit) return ok(outcome.visit);
+  if (outcome.status === "DUPLICATE") return fail("That visit was already logged.");
+  return fail(outcome.reason);
 }
 
 // ── Journey state (Issue 3 / 4) ───────────────────────────────────────────

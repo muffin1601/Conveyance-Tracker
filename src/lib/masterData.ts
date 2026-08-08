@@ -32,6 +32,8 @@ export interface SiteOption {
   landmark: string | null;
   latitude: number;
   longitude: number;
+  /** Metres the employee must be within to log a visit here (see lib/gps.ts). */
+  geofenceRadius: number;
   isOffice: boolean;
 }
 
@@ -58,7 +60,7 @@ export const getActiveSites = unstable_cache(
     prisma.site.findMany({
       where: { status: "ACTIVE", deletedAt: null },
       orderBy: { name: "asc" },
-      select: { id: true, name: true, city: true, address: true, landmark: true, latitude: true, longitude: true, isOffice: true },
+      select: { id: true, name: true, city: true, address: true, landmark: true, latitude: true, longitude: true, geofenceRadius: true, isOffice: true },
     }),
   ["active-sites"],
   { tags: [MASTER_DATA_TAG], revalidate: REVALIDATE_SECONDS },

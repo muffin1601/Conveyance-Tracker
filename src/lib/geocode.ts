@@ -1,5 +1,10 @@
 import "server-only";
 
+// Coordinate validation is shared with the GPS verification rules (lib/gps.ts)
+// so the client and the server can never disagree about what a valid point is.
+import { isValidCoord } from "./gps";
+export { isValidCoord };
+
 /**
  * Reverse-geocoding via OpenStreetMap Nominatim (no API key required).
  * Used to turn raw GPS coordinates into a human address when an employee
@@ -26,18 +31,6 @@ const NOMINATIM_SEARCH = "https://nominatim.openstreetmap.org/search";
 const UA = "WatconConveyanceTracker/1.0 (report@watcon.net)";
 /** Nominatim asks for light use; a stalled lookup must not hang the form. */
 const GEOCODE_TIMEOUT_MS = 8000;
-
-export function isValidCoord(lat: number, lng: number): boolean {
-  return (
-    Number.isFinite(lat) &&
-    Number.isFinite(lng) &&
-    lat >= -90 &&
-    lat <= 90 &&
-    lng >= -180 &&
-    lng <= 180 &&
-    !(lat === 0 && lng === 0)
-  );
-}
 
 /** Reverse-geocode coordinates. Throws on invalid coords or provider failure. */
 export async function reverseGeocode(lat: number, lng: number): Promise<GeocodeResult> {

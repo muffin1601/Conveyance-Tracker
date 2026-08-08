@@ -5,17 +5,22 @@ import {
 } from "react";
 import {
   Loader2, Check, ArrowDown, MapPin, Bike, Car, TrainFront,
-  LocateFixed, X, Save, AlertTriangle, RotateCcw, Flag, History,
+  LocateFixed, X, Save, AlertTriangle, RotateCcw, Flag, History, CloudOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  logVisit, previewVisit, getJourneyState, resetJourney,
+  previewVisit, getJourneyState, resetJourney,
   type JourneyState,
 } from "@/app/actions/visit";
 import { geocodeCoords, listMyLocations, saveCustomLocation } from "@/app/actions/locations";
 import { setActiveEmployee } from "@/app/actions/session";
 import { Combobox, type ComboOption } from "@/components/Combobox";
 import { NavigateButton } from "@/components/NavigateButton";
+import { VerifyLocation, type VerifiedLocation } from "./VerifyLocation";
+import { ConnectionStatus } from "./ConnectionStatus";
+import { useVisitQueue } from "@/hooks/useVisitQueue";
+import { enqueueVisit, newVisitId, type QueuedDestination } from "@/lib/offlineQueue";
+import { isOnline, syncPendingVisits } from "@/lib/visitSync";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
 import { useRouter } from "next/navigation";
 import type { TravelMode } from "@/lib/travel";
@@ -30,6 +35,8 @@ interface Employee {
 interface Site {
   id: string; name: string; city: string | null; address: string;
   landmark: string | null; latitude: number; longitude: number;
+  /** Metres the employee must be within to log a visit here. */
+  geofenceRadius: number;
   isOffice: boolean;
 }
 interface CustomLoc {
@@ -64,7 +71,7 @@ interface Preview {
 }
 
 export function CheckinForm({
-  employees, sites, rates, officeName, initialEmployeeId = "", lang,
+  employees, sites, rates, officeName, initialEmployeeId = "", lang, companyRadius,
 }: {
   /** Restored from the device cookie so a returning user is already selected. */
   initialEmployeeId?: string;
@@ -73,6 +80,8 @@ export function CheckinForm({
   rates: Record<TravelMode, number>;
   officeName: string;
   lang: Lang;
+  /** Company-wide geofence radius (Settings) — used where a location has none. */
+  companyRadius: number;
 }) {
   const [employeeId, setEmployeeId] = useState(initialEmployeeId);
   const [myLocations, setMyLocations] = useState<CustomLoc[]>([]);
@@ -88,12 +97,24 @@ export function CheckinForm({
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
+  /** The estimate is unavailable because there is no connection — not an error. */
+  const [previewOffline, setPreviewOffline] = useState(false);
   const [pending, start] = useTransition();
   const [resetting, startReset] = useTransition();
   const [panel, setPanel] = useState<"none" | "gps">("none");
+  /**
+   * The verified device fix for the CURRENT destination. Cleared by
+   * VerifyLocation whenever the destination changes, so a fix taken at one
+   * site can never authorise a visit to another.
+   */
+  const [verified, setVerified] = useState<VerifiedLocation | null>(null);
+  /** Synchronous re-entry guard for submit — see the comment in `submit`. */
+  const submitting = useRef(false);
 
   const { recent, remember } = useRecentLocations(employeeId);
   const router = useRouter();
+  /** Connectivity + anything still waiting to reach the server. */
+  const queue = useVisitQueue();
 
   const fareNum = parseFloat(fare);
   const fareInvalid = fare.trim() !== "" && !(fareNum >= 0);
@@ -198,6 +219,7 @@ export function CheckinForm({
     // distance against a new one for the length of the debounce is misleading.
     setPreview(null);
     setPreviewError(null);
+    setPreviewOffline(false);
     if (!value) { setDest(null); setUseManual(false); return; }
     const sep = value.indexOf(":");
     const kind = value.slice(0, sep);
@@ -226,11 +248,13 @@ export function CheckinForm({
     setDest(null);
     setPreview(null);
     setPreviewError(null);
+    setPreviewOffline(false);
     setMsg(null);
     setFieldError(null);
     setUseManual(false);
     setManualKm("");
     setFare("");
+    setVerified(null);
   }, [router]);
 
   const destForApi = useCallback((d: Dest) => {
@@ -250,6 +274,17 @@ export function CheckinForm({
 
     const seq = ++previewSeq.current;
     const timer = setTimeout(() => {
+      // Offline the estimate simply is not available — the distance provider
+      // and the rate card both live on the server. That is a note, not a
+      // failure, and it must never look like the visit cannot be logged.
+      if (!isOnline()) {
+        setPreview(null);
+        setPreviewError(null);
+        setPreviewOffline(true);
+        setPreviewing(false);
+        return;
+      }
+      setPreviewOffline(false);
       setPreviewing(true);
       setPreviewError(null);
       previewVisit({
@@ -267,6 +302,11 @@ export function CheckinForm({
         .catch((e) => {
           if (seq !== previewSeq.current) return;
           setPreview(null);
+          // The estimate could not be fetched. If the connection is the reason
+          // (which it usually is), say so calmly instead of raising an error —
+          // the visit can still be logged and priced on sync.
+          if (!isOnline()) { setPreviewOffline(true); setPreviewError(null); return; }
+          console.warn("[CheckinForm] preview failed", e);
           setPreviewError(errorMessage(e));
         })
         .finally(() => {
@@ -278,48 +318,134 @@ export function CheckinForm({
   }, [
     employeeId, dest, mode, useActual, fareNum, manualActive, manualKmNum,
     manualPendingInput, destForApi,
+    // Reconnecting is a reason to fetch the estimate that was skipped while
+    // offline, so the fare appears without the user touching anything.
+    queue.online,
   ]);
 
   // ── Submit ────────────────────────────────────────────────────────────
   function submit() {
+    // A second tap must not start a second visit. `pending` cannot do this on
+    // its own: three taps dispatched in the same tick all read the state from
+    // before the first one, so all three would queue a visit. A ref flips
+    // synchronously, which is the only thing fast enough.
+    if (submitting.current || pending) return;
+    submitting.current = true;
+    let claimed = true;
+    /** Release the guard on any path that does not reach the queue. */
+    const release = () => { if (claimed) { submitting.current = false; claimed = false; } };
+
     setMsg(null);
     setFieldError(null);
-    if (!employeeId) { setFieldError("employee"); return setMsg({ ok: false, text: t(lang, "selectNameContinue") }); }
-    if (!dest) { setFieldError("dest"); return setMsg({ ok: false, text: t(lang, "chooseDestination") }); }
+    if (!employeeId) {
+      release(); setFieldError("employee");
+      return setMsg({ ok: false, text: t(lang, "selectNameContinue") });
+    }
+    if (!dest) {
+      release(); setFieldError("dest");
+      return setMsg({ ok: false, text: t(lang, "chooseDestination") });
+    }
+    if (!destCoords) {
+      release(); setFieldError("dest");
+      return setMsg({ ok: false, text: t(lang, "gpsNoCoordsForLocation") });
+    }
+    // GPS is compulsory: without a verified current fix there is nothing to
+    // send, and the server would reject the request anyway.
+    if (!verified) {
+      release();
+      return setMsg({ ok: false, text: t(lang, "verifyBeforeLogging") });
+    }
     if (useManual && !(manualKmNum > 0)) {
-      setFieldError("manualKm");
+      release(); setFieldError("manualKm");
       return setMsg({ ok: false, text: t(lang, "enterDistanceValid") });
     }
     if (fareInvalid) {
-      setFieldError("fare");
+      release(); setFieldError("fare");
       return setMsg({ ok: false, text: t(lang, "enterValidFare") });
     }
     if (preview?.alreadyHere) {
-      setFieldError("dest");
+      release(); setFieldError("dest");
       return setMsg({ ok: false, text: t(lang, "alreadyHere") });
     }
 
+    const employeeName = employees.find((e) => e.id === employeeId)?.name ?? "";
+    const fix = verified.fix;
+    const distanceM = verified.distanceM;
+    const destination = destForApi(dest) as QueuedDestination;
+    const destinationLabel = destLabel ?? t(lang, "destination");
+    const rememberValue = selectValue;
+
     start(async () => {
+      // ── 1. Keep the visit, whatever happens next ──────────────────────
+      // The employee stood at the site and their location was verified; from
+      // this moment the visit belongs to them. It goes onto the device before
+      // a single byte is sent, so no amount of network or server trouble can
+      // take it away.
+      const clientVisitId = newVisitId();
+      const visitAt = Date.now();
       try {
-        const r = await logVisit({
+        await enqueueVisit({
+          clientVisitId,
           employeeId,
-          destination: destForApi(dest),
+          employeeName,
+          destination,
+          destinationName: destinationLabel,
           mode,
           fareActual: useActual ? fareNum : undefined,
           manualDistanceKm: manualActive ? manualKmNum : undefined,
+          gps: fix,
+          distanceM,
+          visitAt,
         });
-        // An expected failure ("you are already at X", "that trip was just
-        // logged") comes back as a returned error, not a throw — a production
-        // build would redact a thrown one into a bare 500.
-        if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
-        const v = r.data;
-        if (selectValue) remember(selectValue);
-        setMsg({ ok: true, text: t(lang, "tripLoggedMsg", { n: String(v.tripNumber), from: v.from, to: v.site, km: km(v.km), amount: inr(v.amount) }) });
-        setDest(null); setFare(""); setManualKm(""); setUseManual(false); setPreview(null);
-        await refreshJourney(employeeId);
       } catch (e) {
-        setMsg({ ok: false, text: errorMessage(e) });
+        // The device itself refused to store it (private browsing, no quota).
+        // This is the one case where we must not claim the visit is safe.
+        console.error("[CheckinForm] could not queue visit", e);
+        release();
+        setMsg({ ok: false, text: t(lang, "visitCouldNotSave") });
+        return;
       }
+      // Past this point the visit exists on the device. The form resets below,
+      // which clears `verified` and re-disables the button, so the guard has
+      // done its job and can be handed back.
+      release();
+
+      // The form is done either way — the visit is recorded.
+      if (rememberValue) remember(rememberValue);
+      setDest(null); setFare(""); setManualKm(""); setUseManual(false); setPreview(null);
+      setVerified(null);
+      queue.refresh();
+
+      if (!isOnline()) {
+        setMsg({ ok: true, text: t(lang, "visitSavedOffline") });
+        return;
+      }
+
+      // ── 2. Try to deliver it right now ────────────────────────────────
+      // Draining the queue (rather than posting this one visit) also clears
+      // anything left over from an earlier outage, in the right order.
+      setMsg({ ok: true, text: t(lang, "visitSavedWillSync") });
+      let summary;
+      try {
+        summary = await syncPendingVisits();
+      } catch (e) {
+        console.error("[CheckinForm] sync failed", e);
+        setMsg({ ok: true, text: t(lang, "visitSavedOffline") });
+        queue.refresh();
+        return;
+      }
+
+      if (summary.synced > 0 && summary.rejected === 0) {
+        setMsg({ ok: true, text: t(lang, "visitLoggedSimple") });
+      } else if (summary.rejected > 0) {
+        // The server looked at it and said no. The reason is shown against the
+        // individual visit in the status strip, which is where it belongs.
+        setMsg(null);
+      } else {
+        setMsg({ ok: true, text: t(lang, "visitSavedOffline") });
+      }
+      queue.refresh();
+      await refreshJourney(employeeId);
     });
   }
 
@@ -330,7 +456,7 @@ export function CheckinForm({
       try {
         const r = await resetJourney(employeeId);
         if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
-        setDest(null); setPreview(null); setUseManual(false); setManualKm("");
+        setDest(null); setPreview(null); setUseManual(false); setManualKm(""); setVerified(null);
         const refreshed = await refreshJourney(employeeId);
         setMsg({ ok: true, text: t(lang, "journeyRestartedMsg", { from: refreshed?.fromName ?? officeName }) });
       } catch (e) {
@@ -386,13 +512,44 @@ export function CheckinForm({
         })()
     : null;
 
-  const canSubmit = !pending && !!employeeId && !!dest && !preview?.alreadyHere && !manualPendingInput;
+  /**
+   * The selected location's own geofence, when it has one. Saved and ad-hoc
+   * locations have none and fall back to the company-wide radius — the same
+   * resolution the server performs (lib/gps.ts).
+   */
+  const destRadius =
+    dest?.kind === "SITE" ? sites.find((s) => s.id === dest.siteId)?.geofenceRadius ?? null : null;
+
+  /**
+   * Every gate, in order. The button stays disabled until all of them pass —
+   * and the server independently re-checks the ones that matter.
+   */
+  const canSubmit =
+    !pending &&
+    !!employeeId &&
+    !!dest &&
+    !!destCoords &&
+    !!verified &&
+    !preview?.alreadyHere &&
+    !manualPendingInput;
 
   return (
     <div className="space-y-5">
+      {/* ── Connection & pending visits ──────────────────────────────── */}
+      <ConnectionStatus
+        lang={lang}
+        online={queue.online}
+        pending={queue.pending}
+        rejected={queue.rejected}
+        syncing={queue.syncing}
+        justSynced={queue.justSynced}
+        onRetry={() => queue.syncNow(true)}
+        onChanged={queue.refresh}
+      />
+
       {/* ── Who ─────────────────────────────────────────────────────── */}
       <div>
-        <label className="label" htmlFor="emp">{t(lang, "yourName")}</label>
+        <label className="label" htmlFor="emp">{t(lang, "stepName")}</label>
         <Combobox
           id="emp"
           options={employeeOptions}
@@ -470,7 +627,7 @@ export function CheckinForm({
 
           {/* ── Where ─────────────────────────────────────────────────── */}
           <div>
-            <label className="label" htmlFor="dest">{t(lang, "whereGoing")}</label>
+            <label className="label" htmlFor="dest">{t(lang, "stepLocation")}</label>
             {dest?.kind === "GPS" ? (
               <div className="flex items-start gap-2 rounded-md border border-brand/30 bg-brand/5 p-2.5 text-sm">
                 <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-brand" />
@@ -521,6 +678,19 @@ export function CheckinForm({
                 setFieldError(null); setPreview(null); setPreviewError(null);
               }}
               onSaved={() => { refreshLocations(employeeId); }}
+            />
+          )}
+
+          {/* ── Step 3: compulsory location verification ─────────────── */}
+          {dest && (
+            <VerifyLocation
+              lang={lang}
+              destinationName={destLabel ?? t(lang, "destination")}
+              target={destCoords}
+              locationRadius={destRadius}
+              companyRadius={companyRadius}
+              disabled={pending}
+              onChange={setVerified}
             />
           )}
         </>
@@ -611,7 +781,12 @@ export function CheckinForm({
       {/* ── Live estimate ───────────────────────────────────────────── */}
       {employeeId && dest && !preview?.alreadyHere && (
         <div className="rounded-md border bg-bg p-3 text-sm">
-          {!preview && !previewError && !manualPendingInput ? (
+          {previewOffline ? (
+            <div className="flex items-start gap-2 text-muted">
+              <CloudOff className="mt-0.5 h-4 w-4 shrink-0" />
+              <span>{t(lang, "estimateOffline")}</span>
+            </div>
+          ) : !preview && !previewError && !manualPendingInput ? (
             <div className="flex items-center gap-2 text-muted">
               <Loader2 className="h-4 w-4 animate-spin" /> {t(lang, "calculating")}
             </div>
@@ -672,10 +847,21 @@ export function CheckinForm({
         </div>
       )}
 
-      <button onClick={submit} disabled={!canSubmit} className="btn-primary w-full">
-        {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-        {pending ? t(lang, "loggingInProgress") : t(lang, "logThisVisit")}
+      <button
+        onClick={submit}
+        disabled={!canSubmit}
+        className="btn-primary w-full py-3.5 text-base"
+      >
+        {pending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Check className="h-5 w-5" />}
+        {pending
+          ? t(lang, "loggingInProgress")
+          : verified
+            ? t(lang, "logVerifiedVisit")
+            : t(lang, "logThisVisit")}
       </button>
+      {employeeId && dest && !verified && !pending && (
+        <p className="-mt-3 text-center text-xs text-muted">{t(lang, "verifyBeforeLogging")}</p>
+      )}
 
       {/* ── Today's trip timeline ───────────────────────────────────── */}
       {employeeId && journey && journey.legs.length > 0 && (

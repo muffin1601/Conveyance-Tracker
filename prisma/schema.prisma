@@ -214,6 +214,25 @@ model Journey {
   manualDistance Boolean @default(false)  // true when distance was entered by hand (API unavailable)
   sequence    Int // order within the day (0 = first leg from office)
 
+  // Proof-of-presence: the device fix that authorised this leg, verified
+  // server-side against the destination's geofence before the row was written
+  // (see lib/gps.ts + actions/visit.ts). Nullable only because legs logged
+  // before GPS verification became compulsory have no fix to record.
+  gpsLat        Float?
+  gpsLng        Float?
+  gpsAccuracy   Float?    // metres, device-reported
+  gpsCapturedAt DateTime? // when the device took the reading
+  gpsDistanceM  Float?    // server-measured metres from the destination
+  gpsRadiusM    Int?      // the radius that was enforced for that destination
+
+  // Idempotency key minted on the device before the visit was queued. A visit
+  // logged offline may be submitted more than once (retry after a lost
+  // response, two tabs draining the same queue); the unique constraint plus
+  // the pre-flight lookup in actions/visit.ts make every resubmission resolve
+  // to this same row instead of creating another. Null on legs logged before
+  // offline queueing existed.
+  clientVisitId String?   @unique
+
   distanceKm  Float // chosen distance used for reimbursement
   roadKm      Float? // road distance from provider
   haversineKm Float // straight-line fallback

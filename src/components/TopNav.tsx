@@ -17,7 +17,9 @@ export function TopNav({ lang }: { lang: Lang }) {
   return (
     <nav className="border-b">
       <div className="max-w-6xl mx-auto w-full px-4 md:px-8 flex items-center justify-between gap-2">
-        <div className="flex gap-1">
+        {/* The tab row scrolls within itself on a narrow phone rather than
+            pushing the page wider than the screen. */}
+        <div className="flex min-w-0 gap-1 overflow-x-auto">
           {TABS.map((tab) => {
             const active = tab.href === "/app" ? pathname === "/app" : pathname.startsWith(tab.href);
             return (
@@ -25,7 +27,7 @@ export function TopNav({ lang }: { lang: Lang }) {
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "px-4 py-3 text-sm font-medium border-b-2 -mb-px transition",
+                  "shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium border-b-2 -mb-px transition sm:px-4",
                   active
                     ? "border-brand text-fg"
                     : "border-transparent text-muted hover:text-fg",
@@ -36,7 +38,9 @@ export function TopNav({ lang }: { lang: Lang }) {
             );
           })}
         </div>
-        <LanguageToggle lang={lang} />
+        <div className="shrink-0">
+          <LanguageToggle lang={lang} />
+        </div>
       </div>
     </nav>
   );

@@ -63,6 +63,7 @@ async function VisitEntry() {
           employees={employees}
           sites={sites}
           officeName={office?.name ?? "Head Office"}
+          companyRadius={settings.geofenceRadius}
           rates={{ BIKE: settings.rates.BIKE, CAR: settings.rates.CAR, BUSMETRO: settings.rates.busMetroPerKm }}
         />
       </Card>

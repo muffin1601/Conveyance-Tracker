@@ -91,6 +91,95 @@ const DICT = {
   giveItAName: { en: "Give it a name", hi: "इसे एक नाम दें" },
   save: { en: "Save", hi: "Save करें" },
 
+  // ── Step 3: compulsory location verification ─────────────────────
+  stepName: { en: "Step 1 · Select Your Name", hi: "Step 1 · अपना नाम चुनें" },
+  stepLocation: { en: "Step 2 · Select Location", hi: "Step 2 · जगह चुनें" },
+  stepVerify: { en: "Step 3 · Verify Your Location", hi: "Step 3 · अपनी जगह जाँचें" },
+  verifyIntro: {
+    en: "We need to confirm you are at this location before the visit can be logged.",
+    hi: "Visit दर्ज करने से पहले यह पक्का करना ज़रूरी है कि आप इसी जगह पर हैं।",
+  },
+  gpsWaiting: { en: "Waiting for location…", hi: "Location का इंतज़ार…" },
+  gpsRequesting: { en: "Requesting location permission…", hi: "Location की permission माँगी जा रही है…" },
+  gpsGetting: { en: "Getting your current location…", hi: "आपकी अभी की location ली जा रही है…" },
+  gpsChecking: { en: "Checking your location…", hi: "आपकी location जाँची जा रही है…" },
+  gpsVerified: { en: "Location verified", hi: "Location सही पाई गई" },
+  gpsVerifiedDetail: {
+    en: "You are about {distance} from {name}.",
+    hi: "आप {name} से लगभग {distance} दूर हैं।",
+  },
+  gpsOutsideArea: { en: "You are outside the allowed area", hi: "आप तय इलाके से बाहर हैं" },
+  gpsOutsideAreaBody: {
+    en: "You are currently outside the allowed location area. Please move closer to {name} and try again.",
+    hi: "आप अभी तय इलाके से बाहर हैं। कृपया {name} के पास जाकर फिर कोशिश करें।",
+  },
+  gpsOutsideAreaDetail: {
+    en: "About {distance} away · you must be within {radius}.",
+    hi: "लगभग {distance} दूर · आपको {radius} के अंदर होना चाहिए।",
+  },
+  gpsPermissionRequired: { en: "Location permission is required", hi: "Location की permission ज़रूरी है" },
+  gpsPermissionRequiredBody: {
+    en: "A visit can only be logged from the location itself, so we need your location. Please allow location access for this site in your browser settings, then try again.",
+    hi: "Visit उसी जगह से दर्ज हो सकती है, इसलिए आपकी location चाहिए। कृपया browser settings में इस site के लिए location की अनुमति दें, फिर कोशिश करें।",
+  },
+  gpsWeakSignal: { en: "Location signal is too weak", hi: "Location का signal बहुत कमज़ोर है" },
+  gpsWeakSignalBody: {
+    en: "We could not get an accurate enough reading. Please move outside or near a window, then try again.",
+    hi: "सही location नहीं मिल पाई। कृपया बाहर या खिड़की के पास जाकर फिर कोशिश करें।",
+  },
+  gpsNoCoordsForLocation: {
+    en: "GPS coordinates are not configured for this location. Please contact the administrator.",
+    hi: "इस जगह के लिए GPS coordinates सेट नहीं हैं। कृपया administrator से संपर्क करें।",
+  },
+  enableLocation: { en: "Enable Location", hi: "Location चालू करें" },
+  checkMyLocation: { en: "Check My Location", hi: "मेरी Location जाँचें" },
+  checkAgain: { en: "Check Again", hi: "फिर से जाँचें" },
+  verifyBeforeLogging: {
+    en: "Verify your location above before logging this visit.",
+    hi: "यह visit दर्ज करने से पहले ऊपर अपनी location जाँचें।",
+  },
+  logVerifiedVisit: { en: "Location Verified — Log Visit", hi: "Location सही — Visit दर्ज करें" },
+
+  // ── Connection & offline sync ────────────────────────────────────
+  statusOnline: { en: "You're online.", hi: "आप online हैं।" },
+  statusOffline: {
+    en: "You're offline. Visits can still be saved and will sync automatically.",
+    hi: "आप offline हैं। Visits फिर भी save होंगी और internet आने पर अपने आप sync हो जाएँगी।",
+  },
+  onlineShort: { en: "Online", hi: "Online" },
+  offlineShort: { en: "Offline", hi: "Offline" },
+  pendingOne: { en: "1 visit waiting to sync", hi: "1 visit sync होना बाकी है" },
+  pendingMany: { en: "{n} visits waiting to sync", hi: "{n} visits sync होना बाकी हैं" },
+  syncingNow: { en: "Syncing…", hi: "Sync हो रहा है…" },
+  syncNow: { en: "Sync now", hi: "अभी sync करें" },
+  syncedOk: { en: "Visits synced successfully.", hi: "Visits sync हो गईं।" },
+  needsAttentionOne: { en: "1 visit needs your attention", hi: "1 visit पर ध्यान देना है" },
+  needsAttentionMany: { en: "{n} visits need your attention", hi: "{n} visits पर ध्यान देना है" },
+
+  // ── Visit save outcomes ──────────────────────────────────────────
+  visitLoggedSimple: { en: "Visit logged successfully.", hi: "Visit दर्ज हो गई।" },
+  visitSavedOffline: {
+    en: "Visit saved. It will sync automatically when internet is available.",
+    hi: "Visit save हो गई। Internet आते ही अपने आप sync हो जाएगी।",
+  },
+  visitSavedWillSync: {
+    en: "Visit saved. It will sync automatically.",
+    hi: "Visit save हो गई। यह अपने आप sync हो जाएगी।",
+  },
+  visitCouldNotSave: {
+    en: "We couldn't save this visit on your device. Please try again.",
+    hi: "यह visit आपके फ़ोन में save नहीं हो पाई। कृपया फिर कोशिश करें।",
+  },
+  genericRetry: {
+    en: "We couldn't complete this action right now. Please try again.",
+    hi: "यह काम अभी पूरा नहीं हो पाया। कृपया फिर कोशिश करें।",
+  },
+  estimateOffline: {
+    en: "Distance and fare will be calculated when you're back online.",
+    hi: "दूरी और किराया internet आने पर निकाल लिया जाएगा।",
+  },
+  dismiss: { en: "Dismiss", hi: "हटाएँ" },
+
   // ── Transport ────────────────────────────────────────────────────
   modeOfTransport: { en: "Mode of Transport", hi: "यात्रा का साधन" },
   bike: { en: "Bike", hi: "Bike" },
