@@ -91,6 +91,11 @@ interface Point {
    * saved/ad-hoc points, which fall back to the company-wide radius.
    */
   geofenceRadius: number | null;
+  /**
+   * True only for the head office. As a DESTINATION it is the one place whose
+   * radius is not a hard gate — see the `enforceRange` note in lib/gps.ts.
+   */
+  isOffice: boolean;
 }
 
 /**
@@ -148,13 +153,15 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
     locationType: (chained.locationType as Point["locationType"]) ?? "MASTER",
     // Only a DESTINATION's radius is ever enforced, so the origin never needs one.
     geofenceRadius: null,
+    // Likewise only a DESTINATION's office-ness matters.
+    isOffice: false,
   };
   return { from, sequence };
 }
 
 function siteToPoint(site: {
   id: string; name: string; address: string; latitude: number; longitude: number;
-  geofenceRadius?: number | null;
+  geofenceRadius?: number | null; isOffice?: boolean;
 }): Point {
   return {
     name: site.name,
@@ -165,6 +172,7 @@ function siteToPoint(site: {
     customLocationId: null,
     locationType: "MASTER" as const,
     geofenceRadius: site.geofenceRadius ?? null,
+    isOffice: site.isOffice ?? false,
   };
 }
 
@@ -256,7 +264,7 @@ async function resolveDestination(
       where: { id: dest.siteId },
       select: {
         id: true, name: true, address: true, latitude: true, longitude: true,
-        geofenceRadius: true, status: true, deletedAt: true,
+        geofenceRadius: true, isOffice: true, status: true, deletedAt: true,
       },
     });
     if (!site || site.deletedAt || site.status !== "ACTIVE") throw new UserError("Site not found.");
@@ -282,6 +290,7 @@ async function resolveDestination(
       customLocationId: loc.id,
       locationType: loc.source === "GPS" ? "GPS" : "CUSTOM",
       geofenceRadius: null, // no per-location radius — company default applies
+      isOffice: false,
     };
   }
   // GPS — an unsaved geolocated point. The coordinates in the payload are only
@@ -297,6 +306,7 @@ async function resolveDestination(
     customLocationId: null,
     locationType: "GPS",
     geofenceRadius: null,
+    isOffice: false,
   };
 }
 
@@ -547,7 +557,14 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
   const radiusM = resolveGeofenceRadius(to.geofenceRadius, settings.geofenceRadius);
   // `visitAt` anchors the freshness rule to when the visit was made, so a
   // visit queued offline stays valid until it can be delivered.
-  const gpsCheck = checkGpsFix(gps, { lat: to.lat, lng: to.lng }, radiusM, { visitAt });
+  // The head office is the one destination whose radius is not a hard gate:
+  // the end-of-day return leg is routinely logged from home, hours later.
+  // Everything else about the fix is still enforced, and the real distance is
+  // still measured and stored below.
+  const gpsCheck = checkGpsFix(gps, { lat: to.lat, lng: to.lng }, radiusM, {
+    visitAt,
+    enforceRange: !to.isOffice,
+  });
   if (gpsCheck.code !== "OK") {
     return { status: "REJECTED", reason: gpsCheckMessage(gpsCheck, to.name) };
   }

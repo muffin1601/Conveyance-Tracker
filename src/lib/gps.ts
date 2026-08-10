@@ -138,6 +138,22 @@ export interface GpsCheckOptions {
   visitAt?: number;
   /** Injectable clock, for tests. */
   now?: number;
+  /**
+   * Whether the destination's radius is a hard gate. True everywhere except
+   * the head office.
+   *
+   * Field staff routinely finish the last site late and go straight home,
+   * then close the day's chain with the return leg to the office once they
+   * get there — hours later and kilometres away. Enforcing the office's
+   * radius on that leg made an ordinary end-of-day impossible to record, so
+   * the head office accepts the leg from anywhere (see actions/visit.ts).
+   *
+   * Only the RANGE gate is lifted. The fix must still be a real, precise,
+   * fresh reading, and the true distance from the office is still measured
+   * and stored on the leg — so a remote close is visible to admins rather
+   * than silently indistinguishable from an arrival at the gate.
+   */
+  enforceRange?: boolean;
 }
 
 /**
@@ -185,7 +201,7 @@ export function checkGpsFix(
   }
 
   const distanceM = Math.round(haversineMeters({ lat: fix.lat, lng: fix.lng }, target));
-  if (distanceM > radius) {
+  if (options.enforceRange !== false && distanceM > radius) {
     return { code: "OUT_OF_RANGE", distanceM, radiusM: radius };
   }
   return { code: "OK", distanceM, radiusM: radius, accuracyM: Math.round(fix.accuracy) };

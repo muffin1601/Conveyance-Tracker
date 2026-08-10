@@ -142,7 +142,8 @@ export interface VerifiedLocation {
 }
 
 export function VerifyLocation({
-  lang, destinationName, target, locationRadius, companyRadius, disabled, onChange,
+  lang, destinationName, target, locationRadius, companyRadius, enforceRange = true,
+  disabled, onChange,
 }: {
   lang: Lang;
   destinationName: string;
@@ -152,6 +153,12 @@ export function VerifyLocation({
   locationRadius: number | null;
   /** Company-wide default radius, from Settings. */
   companyRadius: number;
+  /**
+   * False for the head office, whose radius the server does not gate on (an
+   * end-of-day return is logged from home). Mirrored here only so the live
+   * status matches the verdict that counts — the server decides this itself.
+   */
+  enforceRange?: boolean;
   /** True while the visit is being submitted — no re-checking mid-flight. */
   disabled?: boolean;
   onChange: (v: VerifiedLocation | null) => void;
@@ -210,7 +217,7 @@ export function VerifyLocation({
 
       setPhase("checking");
       const fix = result.value.fix;
-      const check = checkGpsFix(fix, target, radiusM);
+      const check = checkGpsFix(fix, target, radiusM, { enforceRange });
       if (check.code === "OK") {
         settle("verified", check.distanceM, { fix, distanceM: check.distanceM });
       } else if (check.code === "OUT_OF_RANGE") {
@@ -225,7 +232,7 @@ export function VerifyLocation({
     } finally {
       running.current = false;
     }
-  }, [radiusM, target]);
+  }, [radiusM, target, enforceRange]);
 
   // A new destination invalidates any previous verification immediately, then
   // the check starts on its own — one less tap for someone who is already

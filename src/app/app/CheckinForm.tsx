@@ -521,6 +521,14 @@ export function CheckinForm({
     dest?.kind === "SITE" ? sites.find((s) => s.id === dest.siteId)?.geofenceRadius ?? null : null;
 
   /**
+   * The head office is the one destination the server accepts from outside its
+   * radius: the end-of-day return leg is normally logged from home, long after
+   * the last site. Mirrored here so the live status agrees with the server.
+   */
+  const destEnforcesRange =
+    !(dest?.kind === "SITE" && sites.find((s) => s.id === dest.siteId)?.isOffice);
+
+  /**
    * Every gate, in order. The button stays disabled until all of them pass —
    * and the server independently re-checks the ones that matter.
    */
@@ -689,6 +697,7 @@ export function CheckinForm({
               target={destCoords}
               locationRadius={destRadius}
               companyRadius={companyRadius}
+              enforceRange={destEnforcesRange}
               disabled={pending}
               onChange={setVerified}
             />
