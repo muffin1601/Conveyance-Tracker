@@ -81,6 +81,7 @@ async function drain(): Promise<SyncSummary> {
         mode: visit.mode,
         fareActual: visit.fareActual,
         manualDistanceKm: visit.manualDistanceKm,
+        manualReason: visit.manualReason,
         gps: visit.gps,
         clientVisitId: visit.clientVisitId,
         visitAt: visit.visitAt,

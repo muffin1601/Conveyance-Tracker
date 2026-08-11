@@ -42,6 +42,8 @@ export interface QueuedVisit {
   destinationName: string;
   mode: TravelMode;
   fareActual?: number;
+  /** Why a hand-entered distance differs from the measured route, when asked for. */
+  manualReason?: string;
   manualDistanceKm?: number;
   /** The verified fix: latitude, longitude, accuracy, GPS timestamp. */
   gps: GpsFix;

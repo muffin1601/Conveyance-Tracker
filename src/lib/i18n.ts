@@ -55,7 +55,13 @@ const DICT = {
   // ── Trip header ─────────────────────────────────────────────────
   trip: { en: "Trip", hi: "Trip" },
   startingNewJourney: { en: "Starting a new journey", hi: "नई journey शुरू हो रही है" },
-  resetJourney: { en: "Reset Journey", hi: "Journey Reset करें" },
+  // "Reset" read as "erase my day" and frightened people into calling a
+  // manager. The button has never deleted anything — it only changes where the
+  // NEXT trip starts — so it now says so.
+  resetJourney: { en: "Start next trip from office", hi: "अगली trip office से शुरू करें" },
+  undoReset: { en: "Undo", hi: "वापस लें" },
+  undoResetHint: { en: "Started from office by mistake?", hi: "गलती से office से शुरू कर दिया?" },
+  resetUndoneMsg: { en: "Undone — your next trip starts from {from} again.", hi: "वापस लिया गया — आपकी अगली trip फिर {from} से शुरू होगी।" },
   startingPoint: { en: "Starting Point", hi: "शुरुआती जगह" },
   destination: { en: "Destination", hi: "मंज़िल" },
   notSelectedYet: { en: "Not selected yet", hi: "अभी चुना नहीं गया" },
@@ -199,6 +205,16 @@ const DICT = {
   distance: { en: "Distance", hi: "दूरी" },
   fare: { en: "Fare", hi: "किराया" },
   manualEntry: { en: "distance entered manually", hi: "दूरी खुद डाली गई" },
+  // Shown beside the manual km box so a typed number is a considered choice,
+  // not the only figure on the screen.
+  weMeasured: { en: "We measured {km} by road for this trip.", hi: "हमने इस trip की सड़क दूरी {km} मापी है।" },
+  manualReasonPrompt: {
+    en: "That is quite different from the {km} we measured. Please add a short reason — your distance is still used.",
+    hi: "यह हमारी मापी हुई {km} से काफ़ी अलग है। कृपया छोटा सा कारण लिखें — आपकी दूरी ही इस्तेमाल होगी।",
+  },
+  manualReasonLabel: { en: "Reason for the difference", hi: "अंतर का कारण" },
+  manualReasonPlaceholder: { en: "e.g. road closed, went via client site", hi: "जैसे: रास्ता बंद था, client site होकर गए" },
+  manualReasonRequired: { en: "Please add a short reason for the distance difference.", hi: "कृपया दूरी के अंतर का छोटा सा कारण लिखें।" },
   // Says which kind of number the distance is: measured along the road
   // network, or a straight-line estimate used because routing was unreachable.
   roadDistance: { en: "Road distance", hi: "सड़क दूरी" },
@@ -236,6 +252,15 @@ const DICT = {
   selectNameToSeeTrips: { en: "Select your name above to see your trips and expenses for today.", hi: "आज की trips और खर्चे देखने के लिए ऊपर अपना नाम चुनें।" },
   noActivityToday: { en: "No activity logged today yet.", hi: "आज अभी तक कुछ दर्ज नहीं हुआ।" },
   conveyanceLabel: { en: "Conveyance", hi: "Conveyance" },
+  /** Suffix on the timeline's cumulative distance: "12.4 km so far". */
+  runningTotal: { en: "so far", hi: "अब तक" },
+  dayMapLabel: { en: "Map of today's stops, in order", hi: "आज की जगहों का नक्शा, क्रम में" },
+  // Asked when the starting point sits far from where the last logged trip
+  // ended — nearly always a restart tapped by accident.
+  originLooksWrong: {
+    en: "This trip starts from {from}, but your last trip ended about {distance} away. Is that right?",
+    hi: "यह trip {from} से शुरू हो रही है, पर आपकी पिछली trip लगभग {distance} दूर खत्म हुई थी। क्या यह सही है?",
+  },
   totalConveyanceLabel: { en: "Total Conveyance", hi: "कुल Conveyance" },
   miscellaneousLabel: { en: "Miscellaneous", hi: "अन्य खर्चे" },
   totalMiscLabel: { en: "Total Miscellaneous", hi: "कुल अन्य खर्चे" },

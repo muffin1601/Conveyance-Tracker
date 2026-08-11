@@ -219,6 +219,10 @@ model Journey {
   // (manually-added personal location). Used for report filtering.
   locationType String @default("MASTER") // MASTER | GPS | CUSTOM
   manualDistance Boolean @default(false)  // true when distance was entered by hand (API unavailable)
+  // Why a hand-entered distance differs materially from the routed one
+  // ("detour via client site", "road closed"). Required only past the
+  // tolerance in actions/visit.ts; null on every automatic leg.
+  manualReason   String?
   sequence    Int // order within the day (0 = first leg from office)
 
   // Proof-of-presence: the device fix that authorised this leg, verified

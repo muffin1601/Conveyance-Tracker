@@ -5,11 +5,11 @@ import {
 } from "react";
 import {
   Loader2, Check, ArrowDown, MapPin, Bike, Car, TrainFront,
-  LocateFixed, X, Save, AlertTriangle, RotateCcw, Flag, History, CloudOff,
+  LocateFixed, X, Save, AlertTriangle, RotateCcw, Undo2, Flag, History, CloudOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
-  previewVisit, getJourneyState, resetJourney,
+  previewVisit, getJourneyState, resetJourney, undoJourneyReset,
   type JourneyState,
 } from "@/app/actions/visit";
 import { geocodeCoords, listMyLocations, saveCustomLocation } from "@/app/actions/locations";
@@ -71,7 +71,14 @@ type Dest =
 
 interface Preview {
   fromName: string; toName: string; km: number; amount: number;
-  durationMin?: number | null; source?: string; tripNumber: number; alreadyHere: boolean;
+  durationMin?: number | null; source?: string;
+  /** The routed distance, shown next to a hand-entered one. */
+  measuredKm?: number | null;
+  /** The typed distance is far enough from the route that a reason is required. */
+  manualNeedsReason?: boolean;
+  /** Metres between this leg's stated origin and where the last trip actually ended. */
+  originMismatchM?: number | null;
+  tripNumber: number; alreadyHere: boolean;
 }
 
 export function CheckinForm({
@@ -96,8 +103,12 @@ export function CheckinForm({
   const [fare, setFare] = useState("");
   const [manualKm, setManualKm] = useState("");
   const [useManual, setUseManual] = useState(false);
+  /** Why the typed distance differs from the measured route (only asked past the tolerance). */
+  const [manualReason, setManualReason] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
-  const [fieldError, setFieldError] = useState<"employee" | "dest" | "manualKm" | "fare" | null>(null);
+  const [fieldError, setFieldError] = useState<
+    "employee" | "dest" | "manualKm" | "manualReason" | "fare" | null
+  >(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [previewError, setPreviewError] = useState<string | null>(null);
@@ -363,6 +374,13 @@ export function CheckinForm({
       release(); setFieldError("manualKm");
       return setMsg({ ok: false, text: t(lang, "enterDistanceValid") });
     }
+    // The server enforces this too (an offline device replays the payload
+    // later and must not be a way round it) — catching it here just saves the
+    // employee a rejected visit they would have to re-enter.
+    if (preview?.manualNeedsReason && !manualReason.trim()) {
+      release(); setFieldError("manualReason");
+      return setMsg({ ok: false, text: t(lang, "manualReasonRequired") });
+    }
     if (fareInvalid) {
       release(); setFieldError("fare");
       return setMsg({ ok: false, text: t(lang, "enterValidFare") });
@@ -397,6 +415,7 @@ export function CheckinForm({
           mode,
           fareActual: useActual ? fareNum : undefined,
           manualDistanceKm: manualActive ? manualKmNum : undefined,
+          manualReason: manualActive && manualReason.trim() ? manualReason.trim() : undefined,
           gps: fix,
           distanceM,
           visitAt,
@@ -453,6 +472,25 @@ export function CheckinForm({
     });
   }
 
+  /**
+   * Put back a restart that was tapped by mistake. Available all day, because
+   * the mistake is normally noticed on the next trip rather than immediately.
+   */
+  function undoReset() {
+    if (!employeeId) return;
+    startReset(async () => {
+      try {
+        const r = await undoJourneyReset(employeeId);
+        if (!r.ok) { setMsg({ ok: false, text: r.error }); return; }
+        setDest(null); setPreview(null); setUseManual(false); setManualKm(""); setVerified(null);
+        const refreshed = await refreshJourney(employeeId);
+        setMsg({ ok: true, text: t(lang, "resetUndoneMsg", { from: refreshed?.fromName ?? officeName }) });
+      } catch (e) {
+        setMsg({ ok: false, text: errorMessage(e) });
+      }
+    });
+  }
+
   function doReset() {
     if (!employeeId) return;
     if (!confirm(t(lang, "confirmResetJourney"))) return;
@@ -487,6 +525,8 @@ export function CheckinForm({
   const tripNumber = preview?.tripNumber ?? journey?.tripNumber ?? 1;
   const fromName = preview?.fromName ?? journey?.fromName ?? expectedOrigin?.name ?? officeName;
   const atOrigin = journey ? journey.atOrigin : true;
+  /** A restart happened today and there is a previous destination to go back to. */
+  const canUndoReset = journey?.canUndoReset ?? false;
   // The starting point's OWN address — never a fallback to the head office's.
   // Previously this box always showed the head office's address whenever the trip was
   // starting fresh, so an employee whose day starts at another site (e.g. the
@@ -599,6 +639,52 @@ export function CheckinForm({
                 {t(lang, "resetJourney")}
               </button>
             </div>
+
+            {/* The way back from a mis-tap. Offered for the rest of the day,
+                not for a few seconds, because the mistake shows up on the NEXT
+                trip — when the starting point reads "office" and the employee
+                is standing somewhere else. */}
+            {canUndoReset && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+                <Undo2 className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <span className="text-xs text-amber-700">{t(lang, "undoResetHint")}</span>
+                <button
+                  type="button"
+                  onClick={undoReset}
+                  disabled={resetting || journeyLoading}
+                  className="btn-ghost h-7 px-2 text-xs font-medium text-amber-700"
+                >
+                  {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+                  {t(lang, "undoReset")}
+                </button>
+              </div>
+            )}
+
+            {/* The starting point is a long way from where the last trip
+                actually ended — almost always a restart tapped by mistake.
+                Asked before the trip is logged, because afterwards the wrong
+                distance is already priced and in the day's total. */}
+            {preview?.originMismatchM != null && (
+              <div className="mt-2 flex flex-wrap items-center gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-amber-600" />
+                <span className="text-xs text-amber-700">
+                  {t(lang, "originLooksWrong", {
+                    from: preview.fromName,
+                    distance: km(preview.originMismatchM / 1000),
+                  })}
+                </span>
+                {canUndoReset && (
+                  <button
+                    type="button"
+                    onClick={undoReset}
+                    disabled={resetting || journeyLoading}
+                    className="btn-ghost h-7 px-2 text-xs font-medium text-amber-700"
+                  >
+                    {t(lang, "undoReset")}
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Starting point → destination flow */}
             <div className="mt-3 space-y-1.5">
@@ -792,6 +878,36 @@ export function CheckinForm({
                 onChange={(e) => { setManualKm(e.target.value); setFieldError(null); }}
               />
               {manualInvalid && <p className="mt-1 text-xs text-red-600">{t(lang, "enterDistanceValid")}</p>}
+
+              {/* What the roads actually say. Shown whenever the leg could be
+                  routed, so a typed number is a considered choice rather than
+                  the only figure on screen. */}
+              {preview?.measuredKm != null && (
+                <p className="mt-1 text-xs text-muted">
+                  {t(lang, "weMeasured", { km: km(preview.measuredKm) })}
+                </p>
+              )}
+
+              {/* Past the tolerance the difference has to be explained. The
+                  employee's number is still what gets paid — this only records
+                  why, so a reviewer is not left guessing months later. */}
+              {preview?.manualNeedsReason && (
+                <div className="mt-2 rounded-md border border-amber-500/30 bg-amber-500/10 p-2">
+                  <p className="text-xs text-amber-700">
+                    {t(lang, "manualReasonPrompt", { km: km(preview.measuredKm ?? 0) })}
+                  </p>
+                  <input
+                    type="text"
+                    maxLength={200}
+                    aria-label={t(lang, "manualReasonLabel")}
+                    aria-invalid={fieldError === "manualReason" || undefined}
+                    className={cn("input mt-2 text-sm", fieldError === "manualReason" && "border-red-500")}
+                    placeholder={t(lang, "manualReasonPlaceholder")}
+                    value={manualReason}
+                    onChange={(e) => { setManualReason(e.target.value); setFieldError(null); }}
+                  />
+                </div>
+              )}
             </>
           )}
         </div>

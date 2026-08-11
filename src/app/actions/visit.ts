@@ -46,7 +46,30 @@ const schema = z.object({
     .positive("Distance must be greater than 0 km.")
     .max(2000, "Distance must be 2,000 km or less.")
     .optional(),
+  /** Why a hand-entered distance differs from the routed one. See MANUAL_TOLERANCE. */
+  manualReason: z.string().trim().max(200).optional(),
 });
+
+/**
+ * How far a hand-entered distance may sit from the measured road route before
+ * the employee has to say why.
+ *
+ * 25% is wide on purpose. A real detour — a blocked road, a second gate, a
+ * client stop on the way — easily adds a fifth to a short leg, and this must
+ * not turn into a form that argues with people who are telling the truth. What
+ * it catches is the pattern actually in the data: round numbers typed in place
+ * of a measurement, averaging 1.5× the real distance.
+ */
+// Not exported: a "use server" module may only export async functions, and
+// nothing outside this file needs the number — callers read the boolean
+// `manualNeedsReason` off the preview instead.
+const MANUAL_TOLERANCE = 0.25;
+
+/** True when a typed distance is far enough from the measured one to need a reason. */
+function manualNeedsReason(manualKm: number, measuredKm: number | null): boolean {
+  if (measuredKm === null || measuredKm <= 0) return false; // nothing to compare against
+  return Math.abs(manualKm - measuredKm) / measuredKm > MANUAL_TOLERANCE;
+}
 
 /**
  * The device fix that authorises a visit. Required — there is no bypass flag,
@@ -338,22 +361,31 @@ function legAmount(
  * marked MANUAL so it is never mistaken for a measured road route.
  */
 async function computeLeg(from: Point, to: Point, manualDistanceKm: number | undefined) {
+  // The route is measured even when a manual figure was typed. It is not used
+  // as the distance — the employee's number still wins — but it is what the
+  // form shows beside the box and what the tolerance check compares against.
+  // Without it a typed distance was unfalsifiable.
+  const measured = await computeDistance({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng })
+    .catch(() => null);
+  const measuredKm = measured?.routeAvailable ? measured.distanceKm : null;
+
   if (typeof manualDistanceKm === "number" && manualDistanceKm > 0) {
     return {
       distanceKm: manualDistanceKm,
-      // No provider measured this, so there is no road distance to record. The
-      // straight line is still computed from the real endpoints — it is what a
-      // reviewer needs to judge whether a typed figure is plausible.
+      // No provider measured the leg AS TRAVELLED, so there is no road distance
+      // to record for it. The straight line still comes from the real endpoints
+      // — it is what a reviewer needs to judge whether a typed figure is sane.
       roadKm: null,
       haversineKm:
         Math.round(haversineMeters({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) / 10) / 100,
       durationMin: null as number | null,
       source: "MANUAL" as const,
       routeAvailable: false,
+      measuredKm,
     };
   }
-  const d = await computeDistance({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng });
-  return { ...d, durationMin: d.durationMin as number | null };
+  const d = measured ?? (await computeDistance({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }));
+  return { ...d, durationMin: d.durationMin as number | null, measuredKm };
 }
 
 /**
@@ -384,11 +416,57 @@ async function resolveLegContext(
     getSettings(),
   ]);
   const { from, sequence } = resolveSource(tail, origin);
-  return { from, to, sequence, settings, lastLeg: tail.last, isFirstLeg: !tail.chained };
+  return {
+    from, to, sequence, settings,
+    lastLeg: tail.last,
+    isFirstLeg: !tail.chained,
+    // Kept so callers can ask whether the assumed origin is plausible.
+    originMismatchM: originMismatchMeters(tail, from),
+  };
+}
+
+/**
+ * The gap between where this leg says it starts and where the employee's last
+ * verified trip actually left them, in metres — or null when there is nothing
+ * to disagree about.
+ *
+ * Only meaningful when the chain has been broken by a reset: a genuine first
+ * trip of the day has no previous location to compare with, and a chained leg
+ * starts at the previous destination by construction. This is the exact shape
+ * of the mistake that cost a morning of engineering time — a reset tapped by
+ * accident, after which every trip was measured from the office while the
+ * employee was standing 24 km away.
+ */
+function originMismatchMeters(tail: ChainTail, from: Point): number | null {
+  const superseded = tail.last;
+  if (tail.chained || !superseded) return null;
+
+  const lat = superseded.toLat ?? superseded.toSite?.latitude ?? null;
+  const lng = superseded.toLng ?? superseded.toSite?.longitude ?? null;
+  if (lat === null || lng === null) return null;
+
+  const gap = haversineMeters({ lat: from.lat, lng: from.lng }, { lat, lng });
+  return gap > ORIGIN_WARNING_METERS ? Math.round(gap) : null;
 }
 
 /** A repeat of the previous leg within this window is treated as a double submit. */
 const DUPLICATE_WINDOW_MS = 60_000;
+
+/**
+ * How far from the stated starting point an employee can be, on the day's
+ * FIRST leg, before the form asks whether the starting point is right.
+ *
+ * The first leg is the one that gets this wrong, because it is the only one
+ * whose origin is assumed rather than carried over from a place the employee
+ * was verified at. Someone who starts from the showroom but is assigned the
+ * head office, or who reset their journey by mistake, is billed from the wrong
+ * end of the city — and nobody notices until a reviewer wonders why the first
+ * trip of every day is 20 km.
+ *
+ * 5 km is well past "I parked round the corner" and well short of accusing
+ * anybody: the warning never blocks the visit, it only asks.
+ */
+const ORIGIN_WARNING_METERS = 5000;
 
 export interface VisitPreview {
   fromName: string;
@@ -397,6 +475,20 @@ export interface VisitPreview {
   amount: number;
   durationMin?: number | null;
   source?: string;
+  /**
+   * The routed road distance for this leg, when one could be measured. Shown
+   * beside a hand-entered figure so the employee can see what the roads say
+   * before committing to their own number.
+   */
+  measuredKm?: number | null;
+  /** The typed distance is far enough from `measuredKm` that a reason is required. */
+  manualNeedsReason?: boolean;
+  /**
+   * How far the employee is standing from where this leg says it starts, in
+   * metres — set only on the day's first leg, and only when the gap is large
+   * enough to be worth questioning. See ORIGIN_WARNING_METERS.
+   */
+  originMismatchM?: number | null;
   tripNumber: number;
   alreadyHere: boolean;
 }
@@ -421,7 +513,8 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
     if (!parsed.ok) return fail(parsed.error);
     const { employeeId, destination, mode, fareActual, manualDistanceKm } = parsed.value;
     const workDate = todayKey();
-    const { from, to, sequence, settings } = await resolveLegContext(employeeId, workDate, destination);
+    const context = await resolveLegContext(employeeId, workDate, destination);
+    const { from, to, sequence, settings } = context;
 
     if (isSamePlace(from, to)) {
       return ok({
@@ -439,6 +532,10 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
       amount,
       durationMin: dist.durationMin,
       source: dist.source,
+      measuredKm: dist.measuredKm,
+      manualNeedsReason:
+        typeof manualDistanceKm === "number" && manualNeedsReason(manualDistanceKm, dist.measuredKm),
+      originMismatchM: context.originMismatchM,
       tripNumber: sequence + 1,
       alreadyHere: false,
     });
@@ -527,7 +624,10 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         : first?.message || "Check the form and try again.",
     };
   }
-  const { employeeId, destination, mode, fareActual, manualDistanceKm, gps, clientVisitId, visitAt } = parsed.data;
+  const {
+    employeeId, destination, mode, fareActual, manualDistanceKm, manualReason,
+    gps, clientVisitId, visitAt,
+  } = parsed.data;
 
   // ── Idempotency, before anything else ───────────────────────────────
   const already = await prisma.journey.findUnique({
@@ -613,6 +713,23 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
   }
 
   const dist = await computeLeg(from, to, manualDistanceKm);
+
+  // A typed distance that disagrees materially with the measured route needs a
+  // reason. Enforced HERE and not only in the form, because the form is not the
+  // only way in: an offline device queues the payload and replays it later, and
+  // the queue must not be a way around the rule. REJECTED (not a retry) — the
+  // device cannot fix this by trying again, a person has to.
+  if (typeof manualDistanceKm === "number" && manualNeedsReason(manualDistanceKm, dist.measuredKm)) {
+    if (!manualReason) {
+      return {
+        status: "REJECTED",
+        reason:
+          `You entered ${manualDistanceKm} km but the measured road distance is ` +
+          `${dist.measuredKm} km. Please add a short reason for the difference.`,
+      };
+    }
+  }
+
   const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
 
   // Two tabs (or a tab and a retry) can reach this line concurrently with the
@@ -639,6 +756,8 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         toLng: to.lng,
         locationType: to.locationType,
         manualDistance: dist.source === "MANUAL",
+        // Only meaningful on a manual leg, and only when one was asked for.
+        manualReason: dist.source === "MANUAL" ? (manualReason ?? null) : null,
         sequence,
         distanceKm: dist.distanceKm,
         roadKm: dist.roadKm,
@@ -721,6 +840,13 @@ export interface JourneyState {
   fromLng: number | null;
   /** True when the next leg starts at the office (day start, or after a reset). */
   atOrigin: boolean;
+  /**
+   * True when a restart was recorded today and there is a leg it superseded —
+   * i.e. undoing it would actually change where the next trip starts. Drives
+   * the Undo button; false on a restart tapped before anything was logged,
+   * where there is nothing to go back to.
+   */
+  canUndoReset: boolean;
   totalKm: number;
   totalAmount: number;
   /** Today's legs, oldest first — the trip timeline. */
@@ -783,6 +909,10 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
     fromLat: chainedTail ? (chainedTail.toLat ?? chainedTail.toSite?.latitude ?? null) : origin.lat,
     fromLng: chainedTail ? (chainedTail.toLng ?? chainedTail.toSite?.longitude ?? null) : origin.lng,
     atOrigin: !chainedTail,
+    // Only offer the undo when going back would actually change something: a
+    // restart tapped before anything was logged has no superseded leg to
+    // return to, and an Undo button that does nothing is worse than none.
+    canUndoReset: Boolean(reset && last && last.sequence <= reset.afterSequence),
     totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
     totalAmount: legs.reduce((s, l) => s + l.amount, 0),
     legs: legs.map((l) => ({
@@ -830,6 +960,60 @@ export async function resetJourney(employeeId: string): Promise<ActionResult> {
     revalidatePath("/app");
     return ok();
   }, "resetJourney");
+}
+
+/**
+ * Undo today's reset — the next trip carries on from the last place visited.
+ *
+ * A reset is one marker row, so undoing it is one delete. It exists because
+ * the mistake is easy to make (the button sits next to the trip badge) and
+ * used to be impossible to fix without database access: an employee who tapped
+ * it by accident had their next leg measured from the office instead of from
+ * where they were actually standing, inflating the day's distance.
+ *
+ * Available for the rest of the working day, not just for a few seconds after
+ * the tap: people notice the mistake when they log their NEXT trip and see the
+ * wrong starting point, which can be hours later.
+ */
+export async function undoJourneyReset(employeeId: string): Promise<ActionResult> {
+  return attempt(async () => {
+    if (!employeeId) return fail("Select your name first.");
+    const workDate = todayKey();
+
+    const { count } = await prisma.journeyReset.deleteMany({ where: { employeeId, workDate } });
+    if (!count) return fail("There is nothing to undo — today's journey was not restarted.");
+
+    revalidatePath("/app");
+    return ok();
+  }, "undoJourneyReset");
+}
+
+/**
+ * Undo today's restart, putting the chain back on the last leg's destination.
+ *
+ * A restart is a single marker row and nothing else — no leg is altered when
+ * one is written, so removing it restores the previous state exactly. This
+ * exists because the mistake is silent: an employee taps Restart, and only
+ * discovers it was wrong on the NEXT trip, when the starting point reads as the
+ * office instead of where they are standing. Before this, undoing it needed
+ * database access.
+ *
+ * Deliberately available for the whole working day rather than for a few
+ * seconds after the tap, because that is when the mistake is actually noticed.
+ */
+export async function undoResetJourney(employeeId: string): Promise<ActionResult> {
+  return attempt(async () => {
+    if (!employeeId) return fail("Select your name first.");
+    const workDate = todayKey();
+
+    const removed = await prisma.journeyReset.deleteMany({ where: { employeeId, workDate } });
+    if (removed.count === 0) {
+      return fail("There is no restart to undo today.");
+    }
+
+    revalidatePath("/app");
+    return ok();
+  }, "undoResetJourney");
 }
 
 /**

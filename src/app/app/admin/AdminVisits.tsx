@@ -1,15 +1,15 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 
 import { deleteVisit } from "@/app/actions/visit";
 import { Card, SectionTitle, Empty } from "@/components/ui";
-import { inr, km } from "@/lib/utils";
+import { cn, inr, km } from "@/lib/utils";
 import { LOCATION_TYPES, LOCATION_TYPE_LABEL, type LocationType } from "@/lib/enums";
 import { distanceSourceLabel, isRoadDistance } from "@/lib/routing/types";
 import { BillActions } from "@/components/BillActions";
 import { errorMessage } from "@/lib/errors";
-import { Loader2, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, Loader2, Search, Trash2 } from "lucide-react";
 
 interface Visit {
   id: string;
@@ -29,6 +29,47 @@ interface Visit {
   billType: string | null;
 }
 
+type SortKey = "date" | "employee" | "distanceKm" | "amount";
+
+/**
+ * A column header that sorts. Clicking the active column flips direction;
+ * clicking another column starts it in the direction that column is usually
+ * wanted in — newest dates and biggest amounts first, names A–Z.
+ */
+function SortableHeader({
+  label, sortKey, sort, onSort, align = "left",
+}: {
+  label: string;
+  sortKey: SortKey;
+  sort: { key: SortKey; ascending: boolean };
+  onSort: (key: SortKey) => void;
+  align?: "left" | "right";
+}) {
+  const active = sort.key === sortKey;
+  return (
+    <th
+      className={cn("py-2 pr-3 font-medium", align === "right" && "text-right")}
+      // aria-sort belongs to the column header, not to the control inside it.
+      aria-sort={active ? (sort.ascending ? "ascending" : "descending") : "none"}
+    >
+      <button
+        type="button"
+        onClick={() => onSort(sortKey)}
+        className={cn(
+          "inline-flex items-center gap-1 hover:text-fg",
+          active && "text-fg font-semibold",
+        )}
+        aria-label={`Sort by ${label}`}
+      >
+        {label}
+        {active
+          ? (sort.ascending ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)
+          : <ArrowUpDown className="h-3 w-3 opacity-40" />}
+      </button>
+    </th>
+  );
+}
+
 function modeLabel(m: string) {
   return m === "BUSMETRO" ? "Bus/Metro" : m === "CAR" ? "Car" : m === "BIKE" ? "Bike" : m;
 }
@@ -43,6 +84,9 @@ export function AdminVisits({
 }) {
   const [pending, start] = useTransition();
   const [filter, setFilter] = useState<"ALL" | LocationType>("ALL");
+  const [query, setQuery] = useState("");
+  /** Newest first is what a monthly review starts from. */
+  const [sort, setSort] = useState<{ key: SortKey; ascending: boolean }>({ key: "date", ascending: false });
   const [error, setError] = useState("");
   /** The row being deleted — so only its button shows a spinner. */
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -66,13 +110,71 @@ export function AdminVisits({
     });
   }
 
-  const shown = filter === "ALL" ? visits : visits.filter((v) => v.locationType === filter);
+  /**
+   * Filter, then search, then sort — in that order, so the sort applies to
+   * what the manager is actually looking at.
+   *
+   * All three run on the page already in memory. That is the honest scope:
+   * the table is capped at the most recent 300 entries and the banner above
+   * says so, so this finds a row inside the current view rather than
+   * pretending to search the whole month. For a full-period search the export
+   * is still the right tool.
+   */
+  /** Same column flips direction; a new column starts in its natural order. */
+  function toggleSort(key: SortKey) {
+    setSort((current) =>
+      current.key === key
+        ? { key, ascending: !current.ascending }
+        : { key, ascending: key === "employee" },
+    );
+  }
+
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    const rows = visits.filter((v) => {
+      if (filter !== "ALL" && v.locationType !== filter) return false;
+      if (!needle) return true;
+      return (
+        v.employee.toLowerCase().includes(needle) ||
+        v.site.toLowerCase().includes(needle) ||
+        (v.address?.toLowerCase().includes(needle) ?? false)
+      );
+    });
+
+    const direction = sort.ascending ? 1 : -1;
+    return [...rows].sort((a, b) => {
+      switch (sort.key) {
+        case "employee":
+          return a.employee.localeCompare(b.employee) * direction;
+        case "distanceKm":
+          return (a.distanceKm - b.distanceKm) * direction;
+        case "amount":
+          return (a.amount - b.amount) * direction;
+        case "date":
+        default:
+          // Same-day rows keep a stable, meaningful order by falling back to
+          // the employee rather than whatever order the query returned.
+          return (a.date.localeCompare(b.date) || a.employee.localeCompare(b.employee)) * direction;
+      }
+    });
+  }, [visits, filter, query, sort]);
 
   return (
     <Card>
       <div className="flex items-center justify-between mb-3 gap-3 flex-wrap">
         <SectionTitle>Entries</SectionTitle>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted" />
+            <input
+              type="search"
+              className="input h-8 w-44 py-0 pl-7 text-xs"
+              placeholder="Search name or place…"
+              aria-label="Search entries by employee, destination or address"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          </div>
           <select className="input h-8 py-0 text-xs w-auto" value={filter} onChange={(e) => setFilter(e.target.value as "ALL" | LocationType)}>
             <option value="ALL">All location types</option>
             {LOCATION_TYPES.map((t) => <option key={t} value={t}>{LOCATION_TYPE_LABEL[t]}</option>)}
@@ -96,13 +198,13 @@ export function AdminVisits({
           <table className="w-full text-sm">
             <thead>
               <tr className="text-left text-xs text-muted border-b">
-                <th className="py-2 pr-3 font-medium">Date</th>
-                <th className="py-2 pr-3 font-medium">Employee</th>
+                <SortableHeader label="Date" sortKey="date" sort={sort} onSort={toggleSort} />
+                <SortableHeader label="Employee" sortKey="employee" sort={sort} onSort={toggleSort} />
                 <th className="py-2 pr-3 font-medium">Destination</th>
                 <th className="py-2 pr-3 font-medium">Type</th>
                 <th className="py-2 pr-3 font-medium">Mode</th>
-                <th className="py-2 pr-3 font-medium text-right">Km</th>
-                <th className="py-2 pr-3 font-medium text-right">Amount</th>
+                <SortableHeader label="Km" sortKey="distanceKm" sort={sort} onSort={toggleSort} align="right" />
+                <SortableHeader label="Amount" sortKey="amount" sort={sort} onSort={toggleSort} align="right" />
                 <th className="py-2 pr-3 font-medium">Bill</th>
                 <th className="py-2"></th>
               </tr>

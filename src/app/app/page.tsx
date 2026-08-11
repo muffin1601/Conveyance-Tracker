@@ -8,6 +8,7 @@ import { t } from "@/lib/i18n";
 import { todayKey, inr, km, fmtTime } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
+import { DayMap, type DayStop } from "@/components/DayMap";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
 import { NavigateButton } from "@/components/NavigateButton";
@@ -106,7 +107,7 @@ async function TodaySummary() {
       include: {
         employee: { select: { id: true, name: true } },
         fromSite: { select: { name: true } },
-        toSite: { select: { name: true, city: true } },
+        toSite: { select: { name: true, city: true, latitude: true, longitude: true } },
         fromCustomLocation: { select: { locationName: true } },
         toCustomLocation: { select: { locationName: true } },
       },
@@ -118,6 +119,27 @@ async function TodaySummary() {
   ]);
 
   const uploadsEnabled = isUploadConfigured();
+
+  /**
+   * The day's stops for the map: the first leg's origin, then every
+   * destination in order. Legs with no coordinates (older rows, or a saved
+   * location that never had any) are skipped rather than guessed at — a stop
+   * drawn in the wrong place is worse than a stop not drawn.
+   */
+  function dayStops(legs: typeof journeys): DayStop[] {
+    const stops: DayStop[] = [];
+    const first = legs[0];
+    if (first?.fromLat != null && first.fromLng != null) {
+      stops.push({ order: 0, name: legFromName(first), latitude: first.fromLat, longitude: first.fromLng });
+    }
+    legs.forEach((l, i) => {
+      const lat = l.toLat ?? l.toSite?.latitude ?? null;
+      const lng = l.toLng ?? l.toSite?.longitude ?? null;
+      if (lat == null || lng == null) return;
+      stops.push({ order: i + 1, name: legToName(l), latitude: lat, longitude: lng });
+    });
+    return stops;
+  }
 
   interface Group {
     employeeId: string;
@@ -169,12 +191,20 @@ async function TodaySummary() {
           {day.legs.length > 0 && (
             <>
               <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">{t(lang, "conveyanceLabel")}</div>
+              {/* The shape of the day, above the list. Reading five rows of
+                  "Govindpuri, Delhi" tells you much less than one glance at
+                  where the trips actually went. */}
+              <DayMap label={t(lang, "dayMapLabel")} stops={dayStops(day.legs)} />
               <ol className="space-y-1.5">
                 {day.legs.map((j, i) => (
                   <li key={j.id} className="text-sm">
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-[11px] font-semibold tabular-nums text-muted">{i + 1}.</span>
+                        {/* When the trip was logged. Without it the day is a
+                            list of places in no particular time, and an employee
+                            cannot check their own record against their memory. */}
+                        <span className="text-[11px] tabular-nums text-muted shrink-0">{fmtTime(j.createdAt)}</span>
                         <span className="text-muted truncate">{legFromName(j)}</span>
                         <ArrowRight className="h-3 w-3 text-muted shrink-0" />
                         {/* The full address is a tooltip, not a second line:
@@ -191,6 +221,12 @@ async function TodaySummary() {
                         <span className="text-right tabular-nums">
                           {km(j.distanceKm)} · {inr(j.amount)}
                           <span className="ml-1 text-xs text-muted">{modeLabel(j.vehicleType)}</span>
+                          {/* Running total after this trip — the day adding up
+                              in front of you, so a wrong leg stands out before
+                              it reaches a claim. */}
+                          <span className="block text-[11px] text-muted">
+                            {km(day.legs.slice(0, i + 1).reduce((s, l) => s + l.distanceKm, 0))} {t(lang, "runningTotal")}
+                          </span>
                         </span>
                         <NavigateButton lat={j.toLat} lng={j.toLng} compact />
                       </div>
