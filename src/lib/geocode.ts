@@ -5,6 +5,10 @@ import "server-only";
 import { isValidCoord } from "./gps";
 export { isValidCoord };
 
+// Naming lives in its own module so the offline backfill can reuse it verbatim.
+import { parsePlace, placeLabel } from "./placeLabel";
+export { placeLabel };
+
 /**
  * Reverse-geocoding via OpenStreetMap Nominatim (no API key required).
  * Used to turn raw GPS coordinates into a human address when an employee
@@ -17,7 +21,13 @@ export { isValidCoord };
 
 export interface GeocodeResult {
   address: string;
+  /** The most specific named place around the fix — locality, then road. */
   area: string | null;
+  /**
+   * The short human name for this point ("Kirti Nagar, New Delhi"). Built here
+   * so every caller labels a GPS point the same way — see `placeLabel`.
+   */
+  label: string;
   city: string | null;
   state: string | null;
   country: string | null;
@@ -58,22 +68,7 @@ export async function reverseGeocode(lat: number, lng: number): Promise<GeocodeR
     throw new Error("Could not look up this address. Check your connection and try again.");
   }
 
-  const a = data.address ?? {};
-  const city =
-    a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? null;
-  const area =
-    a.suburb ?? a.neighbourhood ?? a.city_district ?? a.locality ?? null;
-
-  return {
-    address: data.display_name ?? `${lat.toFixed(5)}, ${lng.toFixed(5)}`,
-    area,
-    city,
-    state: a.state ?? null,
-    country: a.country ?? null,
-    postalCode: a.postcode ?? null,
-    latitude: lat,
-    longitude: lng,
-  };
+  return parsePlace(data, lat, lng);
 }
 
 /**
@@ -112,18 +107,6 @@ export async function forwardGeocode(query: string, limit = 5): Promise<GeocodeR
   }
 
   return rows
-    .map((r) => {
-      const a = r.address ?? {};
-      return {
-        address: r.display_name ?? q,
-        area: a.suburb ?? a.neighbourhood ?? a.city_district ?? a.locality ?? null,
-        city: a.city ?? a.town ?? a.village ?? a.municipality ?? a.county ?? null,
-        state: a.state ?? null,
-        country: a.country ?? null,
-        postalCode: a.postcode ?? null,
-        latitude: Number(r.lat),
-        longitude: Number(r.lon),
-      };
-    })
+    .map((r) => parsePlace({ display_name: r.display_name ?? q, address: r.address }, Number(r.lat), Number(r.lon)))
     .filter((r) => isValidCoord(r.latitude, r.longitude));
 }

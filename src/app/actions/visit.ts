@@ -92,10 +92,12 @@ interface Point {
    */
   geofenceRadius: number | null;
   /**
-   * True only for the head office. As a DESTINATION it is the one place whose
-   * radius is not a hard gate — see the `enforceRange` note in lib/gps.ts.
+   * True for the head office and any other starting-point site (the showroom).
+   * As a DESTINATION these are the places whose radius is not a hard gate —
+   * see the `enforceRange` note in lib/gps.ts. Staff routinely log the return
+   * leg to their base from home, hours later.
    */
-  isOffice: boolean;
+  rangeExempt: boolean;
 }
 
 /**
@@ -153,15 +155,15 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
     locationType: (chained.locationType as Point["locationType"]) ?? "MASTER",
     // Only a DESTINATION's radius is ever enforced, so the origin never needs one.
     geofenceRadius: null,
-    // Likewise only a DESTINATION's office-ness matters.
-    isOffice: false,
+    // Likewise only a DESTINATION's exemption matters.
+    rangeExempt: false,
   };
   return { from, sequence };
 }
 
 function siteToPoint(site: {
   id: string; name: string; address: string; latitude: number; longitude: number;
-  geofenceRadius?: number | null; isOffice?: boolean;
+  geofenceRadius?: number | null; isOffice?: boolean; isStartingPoint?: boolean;
 }): Point {
   return {
     name: site.name,
@@ -172,7 +174,7 @@ function siteToPoint(site: {
     customLocationId: null,
     locationType: "MASTER" as const,
     geofenceRadius: site.geofenceRadius ?? null,
-    isOffice: site.isOffice ?? false,
+    rangeExempt: (site.isOffice ?? false) || (site.isStartingPoint ?? false),
   };
 }
 
@@ -188,7 +190,7 @@ async function resolveOffice(): Promise<Point> {
       select: { id: true, name: true, address: true, latitude: true, longitude: true },
     });
     if (!office) throw new UserError("Office location not configured. Ask an admin to set it up.");
-    return siteToPoint(office);
+    return siteToPoint({ ...office, isOffice: true });
   });
 }
 
@@ -264,7 +266,7 @@ async function resolveDestination(
       where: { id: dest.siteId },
       select: {
         id: true, name: true, address: true, latitude: true, longitude: true,
-        geofenceRadius: true, isOffice: true, status: true, deletedAt: true,
+        geofenceRadius: true, isOffice: true, isStartingPoint: true, status: true, deletedAt: true,
       },
     });
     if (!site || site.deletedAt || site.status !== "ACTIVE") throw new UserError("Site not found.");
@@ -290,7 +292,7 @@ async function resolveDestination(
       customLocationId: loc.id,
       locationType: loc.source === "GPS" ? "GPS" : "CUSTOM",
       geofenceRadius: null, // no per-location radius — company default applies
-      isOffice: false,
+      rangeExempt: false,
     };
   }
   // GPS — an unsaved geolocated point. The coordinates in the payload are only
@@ -306,7 +308,7 @@ async function resolveDestination(
     customLocationId: null,
     locationType: "GPS",
     geofenceRadius: null,
-    isOffice: false,
+    rangeExempt: false,
   };
 }
 
@@ -557,13 +559,14 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
   const radiusM = resolveGeofenceRadius(to.geofenceRadius, settings.geofenceRadius);
   // `visitAt` anchors the freshness rule to when the visit was made, so a
   // visit queued offline stays valid until it can be delivered.
-  // The head office is the one destination whose radius is not a hard gate:
-  // the end-of-day return leg is routinely logged from home, hours later.
+  // The head office and the showroom (both starting-point sites) are the
+  // destinations whose radius is not a hard gate: the end-of-day return leg is
+  // routinely logged from home, hours later.
   // Everything else about the fix is still enforced, and the real distance is
   // still measured and stored below.
   const gpsCheck = checkGpsFix(gps, { lat: to.lat, lng: to.lng }, radiusM, {
     visitAt,
-    enforceRange: !to.isOffice,
+    enforceRange: !to.rangeExempt,
   });
   if (gpsCheck.code !== "OK") {
     return { status: "REJECTED", reason: gpsCheckMessage(gpsCheck, to.name) };

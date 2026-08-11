@@ -38,6 +38,8 @@ interface Site {
   /** Metres the employee must be within to log a visit here. */
   geofenceRadius: number;
   isOffice: boolean;
+  /** Head office / showroom — a base staff return to, exempt from the range gate. */
+  isStartingPoint: boolean;
 }
 interface CustomLoc {
   id: string; locationName: string; address: string | null;
@@ -521,12 +523,18 @@ export function CheckinForm({
     dest?.kind === "SITE" ? sites.find((s) => s.id === dest.siteId)?.geofenceRadius ?? null : null;
 
   /**
-   * The head office is the one destination the server accepts from outside its
-   * radius: the end-of-day return leg is normally logged from home, long after
-   * the last site. Mirrored here so the live status agrees with the server.
+   * The head office and the showroom (both starting-point sites) are the
+   * destinations the server accepts from outside their radius: the end-of-day
+   * return leg is normally logged from home, long after the last site.
+   * Mirrored here so the live status agrees with the server.
    */
-  const destEnforcesRange =
-    !(dest?.kind === "SITE" && sites.find((s) => s.id === dest.siteId)?.isOffice);
+  const destEnforcesRange = !(
+    dest?.kind === "SITE" &&
+    (() => {
+      const s = sites.find((x) => x.id === dest.siteId);
+      return !!s && (s.isOffice || s.isStartingPoint);
+    })()
+  );
 
   /**
    * Every gate, in order. The button stays disabled until all of them pass —
@@ -984,6 +992,8 @@ function GpsCapture({
   const [attempt, setAttempt] = useState(0);
   const [detected, setDetected] = useState<{
     lat: number; lng: number; address: string; accuracy: number;
+    /** The short name for this point, composed server-side (lib/geocode.ts). */
+    label: string;
     city: string | null; state: string | null; country: string | null; postalCode: string | null;
   } | null>(null);
   const [saveName, setSaveName] = useState("");
@@ -1028,9 +1038,10 @@ function GpsCapture({
           const g = await geocodeCoords(latitude, longitude);
           setDetected({
             lat: latitude, lng: longitude, address: g.address, accuracy,
+            label: g.label,
             city: g.city, state: g.state, country: g.country, postalCode: g.postalCode,
           });
-          setSaveName(g.area || g.city || t(lang, "newLocationDefault"));
+          setSaveName(g.area || g.city || g.label || t(lang, "newLocationDefault"));
           setStatus("done");
         } catch (e) {
           setStatus("error"); setError(errorMessage(e));
@@ -1129,9 +1140,10 @@ function GpsCapture({
               kind: "GPS",
               lat: detected.lat,
               lng: detected.lng,
-              name: detected.city
-                ? `${detected.city}${detected.state ? `, ${detected.state}` : ""}`
-                : detected.address.split(",").slice(0, 2).join(","),
+              // The label is neighbourhood-first ("Kirti Nagar, New Delhi").
+              // Anything coarser is useless in a report: city + state made
+              // every Delhi visit read "Delhi, Delhi".
+              name: detected.label,
             })}
             className="btn-primary w-full py-3.5 text-base"
           >
