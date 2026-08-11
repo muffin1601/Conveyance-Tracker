@@ -201,6 +201,13 @@ model Journey {
   // which kind of endpoint it was. Populated for every new leg.
   fromName    String?
   toName      String?
+  // Full street address of each endpoint, as the geocoder returned it at the
+  // time ("343, Mehrauli-Gurgaon Rd, Sultanpur, New Delhi, 110030"). The name
+  // above is deliberately short for tables; this is what tells a reviewer
+  // exactly where a GPS visit happened. Null on legs logged before this was
+  // captured, and on endpoints that never had one.
+  fromAddress String?
+  toAddress   String?
   // Endpoint coordinate snapshots — populated for every new leg so the next
   // leg's source (= this leg's destination) resolves without a Site/custom
   // join. Null on legs created before this feature (fall back to Site coords).

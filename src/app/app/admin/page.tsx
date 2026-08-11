@@ -8,7 +8,7 @@ import { LocationApprovals } from "./LocationApprovals";
 import { PeriodPicker } from "./PeriodPicker";
 import { EmployeeFilter } from "./EmployeeFilter";
 import { getActiveEmployees } from "@/lib/masterData";
-import { legToName } from "@/lib/journeyEndpoint";
+import { legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { isSettingsUnlocked } from "@/app/actions/settings";
 import { PinGate } from "@/components/PinGate";
 
@@ -52,8 +52,8 @@ export default async function AdminPage({
         take: PAGE_SIZE,
         include: {
           employee: { select: { name: true } },
-          toSite: { select: { name: true, city: true } },
-          toCustomLocation: { select: { locationName: true } },
+          toSite: { select: { name: true, city: true, address: true } },
+          toCustomLocation: { select: { locationName: true, address: true } },
         },
       }),
       // Totals are aggregated in the database over the WHOLE period. Summing
@@ -119,10 +119,12 @@ export default async function AdminPage({
           id: j.id,
           employee: j.employee.name,
           site: legToName(j) + (j.toSite?.city ? ` · ${j.toSite.city}` : ""),
+          address: legToAddress(j),
           date: j.workDate,
           distanceKm: j.distanceKm,
           amount: j.amount,
           mode: j.vehicleType,
+          distanceSource: j.source,
           locationType: j.locationType,
           billPath: j.billPath,
           billName: j.billName,

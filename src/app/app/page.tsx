@@ -177,7 +177,10 @@ async function TodaySummary() {
                         <span className="text-[11px] font-semibold tabular-nums text-muted">{i + 1}.</span>
                         <span className="text-muted truncate">{legFromName(j)}</span>
                         <ArrowRight className="h-3 w-3 text-muted shrink-0" />
-                        <span className="truncate">{legToName(j)}</span>
+                        {/* The full address is a tooltip, not a second line:
+                            this timeline is read on a phone and must stay one
+                            trip per row. */}
+                        <span className="truncate" title={j.toAddress ?? undefined}>{legToName(j)}</span>
                         {j.locationType !== "MASTER" && (
                           <span className="badge bg-bg text-muted text-[10px] shrink-0">
                             {LOCATION_TYPE_LABEL[j.locationType as LocationType]}

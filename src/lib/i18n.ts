@@ -199,6 +199,10 @@ const DICT = {
   distance: { en: "Distance", hi: "दूरी" },
   fare: { en: "Fare", hi: "किराया" },
   manualEntry: { en: "distance entered manually", hi: "दूरी खुद डाली गई" },
+  // Says which kind of number the distance is: measured along the road
+  // network, or a straight-line estimate used because routing was unreachable.
+  roadDistance: { en: "Road distance", hi: "सड़क दूरी" },
+  estimatedDistance: { en: "Estimated (no route)", hi: "अनुमानित (रूट नहीं मिला)" },
   enterDistanceAbove: { en: "Enter the distance above to see the fare.", hi: "किराया देखने के लिए ऊपर दूरी डालें।" },
   alreadyHere: { en: "You are already at this location — pick a different destination.", hi: "आप पहले से यहीं हैं — कोई और जगह चुनें।" },
   logThisVisit: { en: "Log This Visit", hi: "यह Visit दर्ज करें" },

@@ -6,6 +6,7 @@ import { deleteVisit } from "@/app/actions/visit";
 import { Card, SectionTitle, Empty } from "@/components/ui";
 import { inr, km } from "@/lib/utils";
 import { LOCATION_TYPES, LOCATION_TYPE_LABEL, type LocationType } from "@/lib/enums";
+import { distanceSourceLabel, isRoadDistance } from "@/lib/routing/types";
 import { BillActions } from "@/components/BillActions";
 import { errorMessage } from "@/lib/errors";
 import { Loader2, Trash2 } from "lucide-react";
@@ -14,10 +15,14 @@ interface Visit {
   id: string;
   employee: string;
   site: string;
+  /** Full street address of the destination, when one was recorded. */
+  address: string | null;
   date: string;
   distanceKm: number;
   amount: number;
   mode: string;
+  /** How the distance was obtained — OSRM/CACHE/GOOGLE/HAVERSINE/MANUAL. */
+  distanceSource: string;
   locationType: string;
   billPath: string | null;
   billName: string | null;
@@ -107,10 +112,30 @@ export function AdminVisits({
                 <tr key={v.id}>
                   <td className="py-2 pr-3 text-muted whitespace-nowrap">{v.date}</td>
                   <td className="py-2 pr-3 font-medium">{v.employee}</td>
-                  <td className="py-2 pr-3">{v.site}</td>
+                  <td className="py-2 pr-3">
+                    <span>{v.site}</span>
+                    {/* The street address sits under the short name rather than
+                        in its own column: it is long, it is only sometimes
+                        present, and the name is what the eye scans down. */}
+                    {v.address && v.address !== v.site && (
+                      <span className="block text-xs text-muted max-w-[26rem] truncate" title={v.address}>
+                        {v.address}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 text-xs text-muted whitespace-nowrap">{LOCATION_TYPE_LABEL[v.locationType as LocationType] ?? v.locationType}</td>
                   <td className="py-2 pr-3">{modeLabel(v.mode)}</td>
-                  <td className="py-2 pr-3 text-right tabular-nums">{km(v.distanceKm)}</td>
+                  <td className="py-2 pr-3 text-right tabular-nums">
+                    {km(v.distanceKm)}
+                    {/* Only the exceptions are called out. Marking every routed
+                        row "Road distance" would be noise on a dense table;
+                        what a reviewer needs to spot is the row that ISN'T. */}
+                    {!isRoadDistance(v.distanceSource) && (
+                      <span className="block text-[11px] font-normal text-amber-600">
+                        {distanceSourceLabel(v.distanceSource)}
+                      </span>
+                    )}
+                  </td>
                   <td className="py-2 pr-3 text-right tabular-nums">{inr(v.amount)}</td>
                   <td className="py-2 pr-3">
                     {v.billPath

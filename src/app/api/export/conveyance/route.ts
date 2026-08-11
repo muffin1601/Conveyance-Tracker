@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isSettingsUnlocked } from "@/app/actions/settings";
 import { monthKey } from "@/lib/utils";
-import { legFromName, legToName } from "@/lib/journeyEndpoint";
+import { legFromAddress, legFromName, legToAddress, legToName } from "@/lib/journeyEndpoint";
+import { distanceSourceLabel } from "@/lib/routing/types";
 import { LOCATION_TYPE_LABEL, LOCATION_TYPES, type LocationType } from "@/lib/enums";
 
 function csvCell(v: unknown): string {
@@ -57,15 +58,17 @@ export async function GET(req: NextRequest) {
       employee: true,
       fromSite: true,
       toSite: true,
-      fromCustomLocation: { select: { locationName: true } },
-      toCustomLocation: { select: { locationName: true } },
+      fromCustomLocation: { select: { locationName: true, address: true } },
+      toCustomLocation: { select: { locationName: true, address: true } },
     },
     orderBy: [{ employeeId: "asc" }, { workDate: "asc" }, { sequence: "asc" }],
   });
 
   const header = [
     "Employee Code", "Employee", "Department", "Date", "Leg",
-    "From", "To", "Location Type", "Vehicle", "Distance (km)", "Duration (min)", "Source", "Amount (INR)",
+    // The two address columns sit next to the names they belong to, so a
+    // reviewer reading the sheet left to right gets "where" before "how far".
+    "From", "From Address", "To", "To Address", "Location Type", "Vehicle", "Distance (km)", "Distance Type", "Duration (min)", "Source", "Amount (INR)",
     "Bill Available", "Bill File",
   ];
   const lines = [header.map(csvCell).join(",")];
@@ -73,9 +76,12 @@ export async function GET(req: NextRequest) {
     lines.push(
       [
         j.employee.employeeCode, j.employee.name, j.employee.department, j.workDate,
-        j.sequence + 1, legFromName(j), legToName(j),
+        j.sequence + 1,
+        legFromName(j), legFromAddress(j) ?? "",
+        legToName(j), legToAddress(j) ?? "",
         LOCATION_TYPE_LABEL[j.locationType as LocationType] ?? j.locationType,
-        j.vehicleType, j.distanceKm.toFixed(2), j.durationMin ?? "", j.source, j.amount.toFixed(2),
+        j.vehicleType, j.distanceKm.toFixed(2), distanceSourceLabel(j.source),
+        j.durationMin ?? "", j.source, j.amount.toFixed(2),
         j.billPath ? "Yes" : "No", j.billName ?? "",
       ].map(csvCell).join(","),
     );

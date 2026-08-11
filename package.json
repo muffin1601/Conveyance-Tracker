@@ -8,6 +8,8 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
+    "test": "tsx --conditions=react-server --test scripts/test-routing.ts",
+    "backfill:road-distance": "tsx --conditions=react-server scripts/backfill-road-distance.ts",
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",
     "db:generate": "prisma generate",
@@ -50,6 +52,7 @@
     "playwright": "^1.62.1",
     "postcss": "^8.4.49",
     "prisma": "^6.2.1",
+    "server-only": "^0.0.1",
     "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2"

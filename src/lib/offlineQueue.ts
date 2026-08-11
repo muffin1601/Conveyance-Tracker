@@ -30,7 +30,7 @@ export type QueueStatus = "PENDING" | "SYNCING" | "SYNCED" | "FAILED";
 export type QueuedDestination =
   | { kind: "SITE"; siteId: string }
   | { kind: "CUSTOM"; customLocationId: string }
-  | { kind: "GPS"; lat: number; lng: number; name: string };
+  | { kind: "GPS"; lat: number; lng: number; name: string; address?: string };
 
 export interface QueuedVisit {
   /** Client-generated idempotency key. Primary key here AND on the server. */

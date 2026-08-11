@@ -24,6 +24,8 @@ import { isOnline, syncPendingVisits } from "@/lib/visitSync";
 import { useRecentLocations } from "@/hooks/useRecentLocations";
 import { useRouter } from "next/navigation";
 import type { TravelMode } from "@/lib/travel";
+// Type-only module: safe in a client component, no provider code is pulled in.
+import { isRoadDistance } from "@/lib/routing/types";
 import { cn, inr, km } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 import { t, type Lang, type DictKey } from "@/lib/i18n";
@@ -65,7 +67,7 @@ const PREVIEW_DEBOUNCE_MS = 350;
 type Dest =
   | { kind: "SITE"; siteId: string }
   | { kind: "CUSTOM"; customLocationId: string; hasCoords: boolean }
-  | { kind: "GPS"; lat: number; lng: number; name: string };
+  | { kind: "GPS"; lat: number; lng: number; name: string; address?: string };
 
 interface Preview {
   fromName: string; toName: string; km: number; amount: number;
@@ -262,7 +264,7 @@ export function CheckinForm({
   const destForApi = useCallback((d: Dest) => {
     if (d.kind === "SITE") return { kind: "SITE" as const, siteId: d.siteId };
     if (d.kind === "CUSTOM") return { kind: "CUSTOM" as const, customLocationId: d.customLocationId };
-    return { kind: "GPS" as const, lat: d.lat, lng: d.lng, name: d.name };
+    return { kind: "GPS" as const, lat: d.lat, lng: d.lng, name: d.name, address: d.address };
   }, []);
 
   // ── Live preview (debounced, cancellable) ─────────────────────────────
@@ -823,6 +825,13 @@ export function CheckinForm({
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t(lang, "distance")}</div>
                   <div className="tabular-nums">{km(preview.km)}</div>
+                  {/* Which kind of number this is. A routed distance and a
+                      straight-line estimate must never look the same. */}
+                  {preview.source && preview.km > 0 && (
+                    <div className="text-[11px] text-muted">
+                      {isRoadDistance(preview.source) ? t(lang, "roadDistance") : t(lang, "estimatedDistance")}
+                    </div>
+                  )}
                 </div>
                 <div>
                   <div className="text-[11px] font-semibold uppercase tracking-wider text-muted">{t(lang, "fare")}</div>
@@ -1144,6 +1153,9 @@ function GpsCapture({
               // Anything coarser is useless in a report: city + state made
               // every Delhi visit read "Delhi, Delhi".
               name: detected.label,
+              // Kept alongside the short name so a reviewer can see the exact
+              // street the visit was logged from, not just the neighbourhood.
+              address: detected.address,
             })}
             className="btn-primary w-full py-3.5 text-base"
           >

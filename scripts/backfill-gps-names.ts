@@ -61,7 +61,10 @@ async function lookup(lat: number, lng: number) {
 async function main() {
   const legs = await prisma.journey.findMany({
     where: { locationType: "GPS", toLat: { not: null }, toLng: { not: null } },
-    select: { id: true, workDate: true, sequence: true, employeeId: true, toName: true, toLat: true, toLng: true },
+    select: {
+      id: true, workDate: true, sequence: true, employeeId: true,
+      toName: true, toAddress: true, toLat: true, toLng: true,
+    },
     orderBy: [{ workDate: "asc" }, { sequence: "asc" }],
   });
   console.log(`GPS legs with coordinates: ${legs.length}`);
@@ -86,25 +89,41 @@ async function main() {
   // A leg's own name, and the name the NEXT leg shows as its origin, are two
   // separate snapshots of the same place — rename both or the chain reads as a
   // trip from somewhere the employee never was.
-  const renames: { id: string; workDate: string; from: string; to: string }[] = [];
+  const renames: { id: string; workDate: string; from: string; to: string; address: string | null }[] = [];
   const skipped: { id: string; name: string; reason: string }[] = [];
-  const fromUpdates = new Map<string, string>(); // coord key -> new name
+  /** coord key -> what the next leg should call this point, and its address. */
+  const fromUpdates = new Map<string, { label: string; address: string }>();
 
   for (const leg of legs) {
     const place = places.get(key(leg.toLat!, leg.toLng!));
     if (!place) { skipped.push({ id: leg.id, name: leg.toName ?? "", reason: "lookup failed" }); continue; }
-    if (!isGeneric(leg.toName, place)) { skipped.push({ id: leg.id, name: leg.toName ?? "", reason: "named by hand" }); continue; }
-    if (leg.toName === place.label) { skipped.push({ id: leg.id, name: leg.toName ?? "", reason: "already correct" }); continue; }
-    renames.push({ id: leg.id, workDate: leg.workDate, from: leg.toName ?? "(none)", to: place.label });
-    fromUpdates.set(key(leg.toLat!, leg.toLng!), place.label);
+    // The street address is additive — worth filling in even on a leg whose
+    // name the employee typed themselves and which must stay as it is.
+    const address = leg.toAddress ? null : place.address;
+    const rename = isGeneric(leg.toName, place) && leg.toName !== place.label;
+    if (!rename && !address) {
+      skipped.push({ id: leg.id, name: leg.toName ?? "", reason: isGeneric(leg.toName, place) ? "already correct" : "named by hand" });
+      continue;
+    }
+    renames.push({
+      id: leg.id, workDate: leg.workDate,
+      from: leg.toName ?? "(none)",
+      to: rename ? place.label : (leg.toName ?? place.label),
+      address,
+    });
+    fromUpdates.set(key(leg.toLat!, leg.toLng!), { label: place.label, address: place.address });
   }
 
-  console.log(`\nto rename: ${renames.length}   leaving alone: ${skipped.length}`);
+  const renamedCount = renames.filter((r) => r.from !== r.to).length;
+  const addressCount = renames.filter((r) => r.address).length;
+  console.log(`\nto update: ${renames.length} (${renamedCount} renamed, ${addressCount} gaining an address)   leaving alone: ${skipped.length}`);
   const byReason = new Map<string, number>();
   for (const s of skipped) byReason.set(s.reason, (byReason.get(s.reason) ?? 0) + 1);
   for (const [r, n] of byReason) console.log(`  ${n} × ${r}`);
   console.log();
-  for (const r of renames.slice(0, 40)) console.log(`  ${r.workDate}  "${r.from}"  ->  "${r.to}"`);
+  for (const r of renames.slice(0, 40)) {
+    console.log(`  ${r.workDate}  "${r.from}"  ->  "${r.to}"${r.address ? `\n              + ${r.address}` : ""}`);
+  }
   if (renames.length > 40) console.log(`  ... and ${renames.length - 40} more`);
 
   if (!APPLY) {
@@ -114,7 +133,10 @@ async function main() {
 
   // Backup first: this rewrites history that reports are read from.
   const backup = await prisma.journey.findMany({
-    select: { id: true, workDate: true, sequence: true, employeeId: true, fromName: true, toName: true },
+    select: {
+      id: true, workDate: true, sequence: true, employeeId: true,
+      fromName: true, toName: true, fromAddress: true, toAddress: true,
+    },
   });
   const stamp = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
   const path = `journey-names-rollback-${stamp}.json`;
@@ -123,26 +145,34 @@ async function main() {
 
   let done = 0;
   for (const r of renames) {
-    await prisma.journey.update({ where: { id: r.id }, data: { toName: r.to } });
+    await prisma.journey.update({
+      where: { id: r.id },
+      data: { toName: r.to, ...(r.address ? { toAddress: r.address } : {}) },
+    });
     done++;
   }
-  console.log(`destinations renamed: ${done}`);
+  console.log(`destinations updated: ${done}`);
 
   // Now the origin snapshots on the legs that chained off those destinations.
   let origins = 0;
   const chained = await prisma.journey.findMany({
     where: { fromLat: { not: null }, fromLng: { not: null } },
-    select: { id: true, fromName: true, fromLat: true, fromLng: true },
+    select: { id: true, fromName: true, fromAddress: true, fromLat: true, fromLng: true },
   });
   for (const leg of chained) {
-    const label = fromUpdates.get(key(leg.fromLat!, leg.fromLng!));
-    if (!label || leg.fromName === label) continue;
+    const update = fromUpdates.get(key(leg.fromLat!, leg.fromLng!));
+    if (!update) continue;
     const place = places.get(key(leg.fromLat!, leg.fromLng!))!;
-    if (!isGeneric(leg.fromName, place)) continue;
-    await prisma.journey.update({ where: { id: leg.id }, data: { fromName: label } });
+    const rename = isGeneric(leg.fromName, place) && leg.fromName !== update.label;
+    const address = leg.fromAddress ? null : update.address;
+    if (!rename && !address) continue;
+    await prisma.journey.update({
+      where: { id: leg.id },
+      data: { ...(rename ? { fromName: update.label } : {}), ...(address ? { fromAddress: address } : {}) },
+    });
     origins++;
   }
-  console.log(`origins renamed: ${origins}`);
+  console.log(`origins updated: ${origins}`);
 }
 
 main()

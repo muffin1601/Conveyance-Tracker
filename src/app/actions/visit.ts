@@ -7,7 +7,7 @@ import { memo } from "@/lib/cache";
 import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
 import { checkGpsFix, resolveGeofenceRadius, type GpsCheck } from "@/lib/gps";
-import { legFromName, legToName } from "@/lib/journeyEndpoint";
+import { legFromName, legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { attempt, ok, fail, UserError, type ActionResult } from "@/lib/result";
 import { getSettings } from "@/lib/settings";
 import { isSettingsUnlocked } from "./settings";
@@ -27,6 +27,11 @@ const destinationSchema = z.discriminatedUnion("kind", [
     lat: z.number(),
     lng: z.number(),
     name: z.string().trim().min(1).max(200),
+    // The street address the device's reverse-geocode returned. Descriptive
+    // only — like `name`, it labels the leg and is never an input to distance,
+    // geofencing or money, all of which are computed from the coordinates the
+    // server verifies itself. Optional so an older client still works.
+    address: z.string().trim().max(300).optional(),
   }),
 ]);
 
@@ -143,11 +148,11 @@ function resolveSource(tail: ChainTail, office: Point): { from: Point; sequence:
   const lng = chained.toLng ?? chained.toSite?.longitude;
   const from: Point = {
     name: chained.toName ?? chained.toSite?.name ?? "Previous location",
-    // A leg's destination address is never persisted (only lat/lng/name were
-    // snapshotted), so a chained origin has no address of its own — showing
-    // the OLD office/origin's address here would be exactly the bug this type
-    // exists to prevent.
-    address: null,
+    // The address the previous leg recorded for this very point. Legs written
+    // before `toAddress` existed have none, and null is correct there — showing
+    // the OLD office/origin's address instead would be exactly the bug this
+    // type exists to prevent.
+    address: chained.toAddress ?? null,
     lat: lat ?? office.lat,
     lng: lng ?? office.lng,
     siteId: chained.toSiteId,
@@ -301,7 +306,7 @@ async function resolveDestination(
   if (!isValidCoord(dest.lat, dest.lng)) throw new UserError("Invalid coordinates.");
   return {
     name: dest.name,
-    address: null,
+    address: dest.address ?? null,
     lat: dest.lat,
     lng: dest.lng,
     siteId: null,
@@ -322,14 +327,29 @@ function legAmount(
   return useActual ? Math.round(fareActual! * 100) / 100 : visitAmount(distanceKm, mode, rates);
 }
 
+/**
+ * The one distance for a leg. Everything downstream — the amount, the admin
+ * table, the exports — reads this single value, so there is no way for two
+ * screens to disagree and no way for a travelled distance and a routed
+ * distance to be added together.
+ *
+ * A hand-entered distance wins when the employee supplied one (the auto
+ * calculation is unavailable for saved locations with no coordinates), and is
+ * marked MANUAL so it is never mistaken for a measured road route.
+ */
 async function computeLeg(from: Point, to: Point, manualDistanceKm: number | undefined) {
   if (typeof manualDistanceKm === "number" && manualDistanceKm > 0) {
     return {
       distanceKm: manualDistanceKm,
-      roadKm: manualDistanceKm,
-      haversineKm: manualDistanceKm,
+      // No provider measured this, so there is no road distance to record. The
+      // straight line is still computed from the real endpoints — it is what a
+      // reviewer needs to judge whether a typed figure is plausible.
+      roadKm: null,
+      haversineKm:
+        Math.round(haversineMeters({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng }) / 10) / 100,
       durationMin: null as number | null,
       source: "MANUAL" as const,
+      routeAvailable: false,
     };
   }
   const d = await computeDistance({ lat: from.lat, lng: from.lng }, { lat: to.lat, lng: to.lng });
@@ -611,6 +631,8 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         toCustomLocationId: to.customLocationId,
         fromName: from.name,
         toName: to.name,
+        fromAddress: from.address,
+        toAddress: to.address,
         fromLat: from.lat,
         fromLng: from.lng,
         toLat: to.lat,
@@ -692,7 +714,7 @@ export interface JourneyState {
   tripNumber: number;
   /** Where the next trip starts. Read-only unless this is the first trip. */
   fromName: string;
-  /** That location's own street address — null once the day is underway (see resolveSource). */
+  /** That location's own street address — null when the leg it came from recorded none. */
   fromAddress: string | null;
   /** Coordinates of the starting point — for the "how far is that from me" GPS check and Navigate. */
   fromLat: number | null;
@@ -707,6 +729,8 @@ export interface JourneyState {
     sequence: number;
     fromName: string;
     toName: string;
+    /** The destination's street address, for the timeline tooltip. */
+    toAddress: string | null;
     /** The leg's destination — for a one-tap Navigate link on the timeline. */
     toLat: number | null;
     toLng: number | null;
@@ -734,13 +758,13 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
       where: { employeeId, workDate },
       orderBy: { sequence: "asc" },
       select: {
-        id: true, sequence: true, fromName: true, toName: true,
+        id: true, sequence: true, fromName: true, toName: true, toAddress: true,
         distanceKm: true, amount: true, vehicleType: true, createdAt: true,
         toLat: true, toLng: true,
         fromSite: { select: { name: true, latitude: true, longitude: true } },
-        toSite: { select: { name: true, latitude: true, longitude: true } },
+        toSite: { select: { name: true, latitude: true, longitude: true, address: true } },
         fromCustomLocation: { select: { locationName: true } },
-        toCustomLocation: { select: { locationName: true } },
+        toCustomLocation: { select: { locationName: true, address: true } },
       },
     }),
     prisma.journeyReset.findUnique({
@@ -755,7 +779,7 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
   return {
     tripNumber: (last ? last.sequence + 1 : 0) + 1,
     fromName: chainedTail ? legToName(chainedTail) : origin.name,
-    fromAddress: chainedTail ? null : origin.address,
+    fromAddress: chainedTail ? legToAddress(chainedTail) : origin.address,
     fromLat: chainedTail ? (chainedTail.toLat ?? chainedTail.toSite?.latitude ?? null) : origin.lat,
     fromLng: chainedTail ? (chainedTail.toLng ?? chainedTail.toSite?.longitude ?? null) : origin.lng,
     atOrigin: !chainedTail,
@@ -766,6 +790,7 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
       sequence: l.sequence,
       fromName: legFromName(l),
       toName: legToName(l),
+      toAddress: legToAddress(l),
       toLat: l.toLat ?? l.toSite?.latitude ?? null,
       toLng: l.toLng ?? l.toSite?.longitude ?? null,
       distanceKm: l.distanceKm,
