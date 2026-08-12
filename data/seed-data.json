@@ -190,8 +190,8 @@
       "name": "GR INFRA PROJECT",
       "address": "GR ONE PLT NO. 7 B MARUTI INDUSTRIAL COMPLEX SEC.18 GURGAON (HARYANA) -122015",
       "pincode": "122015",
-      "lat": 28.4963,
-      "lng": 77.0763,
+      "lat": 28.4919686,
+      "lng": 77.0712901,
       "city": "Gurugram",
       "state": "Haryana",
       "geofenceRadius": 200
@@ -819,6 +819,17 @@
       "pincode": "110041",
       "lat": 28.68252,
       "lng": 77.079079,
+      "city": "New Delhi",
+      "state": "Delhi",
+      "geofenceRadius": 200
+    },
+    {
+      "sno": 75,
+      "name": "SAURABH AGRAWAL - VASANT VIHAR",
+      "address": "Vasant Vihar, New Delhi -110057",
+      "pincode": "110057",
+      "lat": 28.5660808,
+      "lng": 77.1618498,
       "city": "New Delhi",
       "state": "Delhi",
       "geofenceRadius": 200
