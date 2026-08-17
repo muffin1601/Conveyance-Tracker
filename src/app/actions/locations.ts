@@ -86,9 +86,18 @@ export async function saveCustomLocation(input: z.infer<typeof saveSchema>) {
     if (near) throw new Error("You already saved a location at this spot.");
   }
 
+  // The login this location was saved under (see actions/session.ts). Null for
+  // an employee who has not re-identified since login times were introduced —
+  // the reports fall back to createdAt for those.
+  const owner = await prisma.employee.findUnique({
+    where: { id: data.employeeId },
+    select: { lastLoginAt: true },
+  });
+
   const loc = await prisma.userCustomLocation.create({
     data: {
       employeeId: data.employeeId,
+      loginAt: owner?.lastLoginAt ?? null,
       locationName: data.locationName,
       address: data.address || null,
       landmark: data.landmark || null,

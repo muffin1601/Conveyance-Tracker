@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { monthKey, inr } from "@/lib/utils";
+import { monthKey, inr, loginTimestamp } from "@/lib/utils";
 import { StatCard } from "@/components/ui";
 import { Download } from "lucide-react";
 import { AdminVisits } from "./AdminVisits";
@@ -121,6 +121,10 @@ export default async function AdminPage({
           site: legToName(j) + (j.toSite?.city ? ` · ${j.toSite.city}` : ""),
           address: legToAddress(j),
           date: j.workDate,
+          // Serialised so the client component gets a plain string; loginAt is
+          // the real login time where one was recorded, createdAt the honest
+          // fallback for legs that pre-date it (see lib/utils#loginTimestamp).
+          loginAt: loginTimestamp(j)?.toISOString() ?? null,
           distanceKm: j.distanceKm,
           amount: j.amount,
           mode: j.vehicleType,
@@ -161,6 +165,7 @@ export default async function AdminPage({
           source: l.source,
           isGlobal: l.isGlobal,
           employee: l.employee.name,
+          loginAt: loginTimestamp(l)?.toISOString() ?? null,
         }))}
       />
     </div>

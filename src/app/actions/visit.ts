@@ -653,7 +653,7 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
   const [employee, ctx] = await Promise.all([
     prisma.employee.findUnique({
       where: { id: employeeId },
-      select: { id: true, name: true, status: true, deletedAt: true },
+      select: { id: true, name: true, status: true, deletedAt: true, lastLoginAt: true },
     }),
     resolveLegContext(employeeId, workDate, destination),
   ]);
@@ -755,6 +755,10 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         toLat: to.lat,
         toLng: to.lng,
         locationType: to.locationType,
+        // The login this leg was logged under, carried onto the row so the
+        // reports never have to join back to the roster (where it would since
+        // have moved on to a later login).
+        loginAt: employee.lastLoginAt,
         manualDistance: dist.source === "MANUAL",
         // Only meaningful on a manual leg, and only when one was asked for.
         manualReason: dist.source === "MANUAL" ? (manualReason ?? null) : null,

@@ -19,22 +19,22 @@ datasource db {
 // ──────────────────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  name          String
-  role          String    @default("EMPLOYEE") // SUPER_ADMIN | ADMIN | MANAGER | EMPLOYEE
-  isActive      Boolean   @default(true)
-  lastLoginAt   DateTime?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
-  deletedAt     DateTime?
+  id           String    @id @default(cuid())
+  email        String    @unique
+  passwordHash String
+  name         String
+  role         String    @default("EMPLOYEE") // SUPER_ADMIN | ADMIN | MANAGER | EMPLOYEE
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+  deletedAt    DateTime?
 
   employee      Employee?
   sessions      Session[]
   auditLogs     AuditLog[]
   notifications Notification[]
-  approvals     Approval[]   @relation("ApprovalActor")
+  approvals     Approval[]     @relation("ApprovalActor")
 
   @@index([role])
   @@index([email])
@@ -59,17 +59,23 @@ model Session {
 // ──────────────────────────────────────────────────────────────
 
 model Employee {
-  id           String   @id @default(cuid())
-  employeeCode String   @unique // e.g. WAT-0001
+  id           String  @id @default(cuid())
+  employeeCode String  @unique // e.g. WAT-0001
   name         String
   phone        String?
-  email        String?  @unique
+  email        String? @unique
   department   String
   designation  String
-  vehicleType  String   @default("BIKE") // BIKE | CAR | CAB | AUTO | METRO | BUS
-  status       String   @default("ACTIVE") // ACTIVE | INACTIVE
+  vehicleType  String  @default("BIKE") // BIKE | CAR | CAB | AUTO | METRO | BUS
+  status       String  @default("ACTIVE") // ACTIVE | INACTIVE
   managerId    String?
-  userId       String?  @unique
+  userId       String? @unique
+
+  // When this person last identified themselves on a device (the app's login —
+  // there is no password step for staff, selecting your name IS the login; see
+  // actions/session.ts). Stamped onto every location record made afterwards so
+  // reports can show the login time without joining back to the roster.
+  lastLoginAt DateTime?
 
   // Where this person's first trip of the day starts, if not the head office.
   // Most staff leave this unset and start at Head Office (the Site flagged
@@ -78,19 +84,19 @@ model Employee {
   defaultOriginSiteId String?
   defaultOriginSite   Site?   @relation("DefaultOrigin", fields: [defaultOriginSiteId], references: [id])
 
-  manager   Employee?  @relation("Reports", fields: [managerId], references: [id])
-  reports   Employee[] @relation("Reports")
-  user      User?      @relation(fields: [userId], references: [id])
+  manager Employee?  @relation("Reports", fields: [managerId], references: [id])
+  reports Employee[] @relation("Reports")
+  user    User?      @relation(fields: [userId], references: [id])
 
-  journeys  Journey[]
-  visits    SiteVisit[]
-  claims    Claim[]
+  journeys        Journey[]
+  visits          SiteVisit[]
+  claims          Claim[]
   customLocations UserCustomLocation[]
   miscExpenses    MiscellaneousExpense[]
   journeyResets   JourneyReset[]
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   @@index([department])
@@ -102,38 +108,38 @@ model Employee {
 }
 
 model Site {
-  id             String  @id @default(cuid())
-  code           String  @unique // SITE-001
-  name           String
-  address        String
-  pincode        String?
-  city           String?
-  state          String?
-  region         String?
-  zone           String?
-  client         String?
-  projectManager String?
+  id              String  @id @default(cuid())
+  code            String  @unique // SITE-001
+  name            String
+  address         String
+  pincode         String?
+  city            String?
+  state           String?
+  region          String?
+  zone            String?
+  client          String?
+  projectManager  String?
   // A nearby, well-known reference point ("opposite XYZ petrol pump") — shown
   // alongside the address so a non-technical employee can recognise the spot
   // without reading coordinates.
-  landmark       String?
-  latitude       Float
-  longitude      Float
-  geofenceRadius Int     @default(200) // metres
-  isOffice       Boolean @default(false) // the head office — the fallback origin for everyone
+  landmark        String?
+  latitude        Float
+  longitude       Float
+  geofenceRadius  Int     @default(200) // metres
+  isOffice        Boolean @default(false) // the head office — the fallback origin for everyone
   // A site an employee may be assigned as their personal day-start (see
   // Employee.defaultOriginSiteId). isOffice implies this; kept separate so a
   // second place (e.g. a showroom) can be added without redefining "the" office.
   isStartingPoint Boolean @default(false)
-  status         String  @default("ACTIVE") // ACTIVE | INACTIVE
+  status          String  @default("ACTIVE") // ACTIVE | INACTIVE
 
   visits         SiteVisit[]
-  fromLegs       Journey[]  @relation("FromSite")
-  toLegs         Journey[]  @relation("ToSite")
-  originForStaff Employee[] @relation("DefaultOrigin")
+  fromLegs       Journey[]   @relation("FromSite")
+  toLegs         Journey[]   @relation("ToSite")
+  originForStaff Employee[]  @relation("DefaultOrigin")
 
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
   deletedAt DateTime?
 
   @@index([status])
@@ -148,13 +154,13 @@ model Site {
 
 // A SiteVisit is a single punch-in/punch-out at a site.
 model SiteVisit {
-  id          String    @id @default(cuid())
-  employeeId  String
-  siteId      String
-  workDate    String // YYYY-MM-DD (local) for fast daily grouping
+  id         String @id @default(cuid())
+  employeeId String
+  siteId     String
+  workDate   String // YYYY-MM-DD (local) for fast daily grouping
 
   // Punch-in
-  checkInAt   DateTime  @default(now())
+  checkInAt   DateTime @default(now())
   inLatitude  Float
   inLongitude Float
   inAccuracy  Float?
@@ -167,9 +173,9 @@ model SiteVisit {
   outAccuracy  Float?
   durationMin  Int? // computed on check-out
 
-  deviceInfo  String?
-  ipAddress   String?
-  status      String    @default("OPEN") // OPEN | CLOSED
+  deviceInfo String?
+  ipAddress  String?
+  status     String  @default("OPEN") // OPEN | CLOSED
 
   employee Employee @relation(fields: [employeeId], references: [id])
   site     Site     @relation(fields: [siteId], references: [id])
@@ -187,43 +193,43 @@ model SiteVisit {
 
 // A Journey is one leg between two points (office/site -> site/office).
 model Journey {
-  id          String  @id @default(cuid())
-  employeeId  String
-  workDate    String
+  id                   String  @id @default(cuid())
+  employeeId           String
+  workDate             String
   // Endpoints. A leg's from/to is EITHER a master Site OR a personal
   // UserCustomLocation (GPS or manual). Exactly one FK of each pair is set.
   // Existing rows always have the Site FKs populated (backward compatible).
-  fromSiteId  String?
-  toSiteId    String?
+  fromSiteId           String?
+  toSiteId             String?
   fromCustomLocationId String?
   toCustomLocationId   String?
   // Denormalised endpoint labels so readers/exports never need to branch on
   // which kind of endpoint it was. Populated for every new leg.
-  fromName    String?
-  toName      String?
+  fromName             String?
+  toName               String?
   // Full street address of each endpoint, as the geocoder returned it at the
   // time ("343, Mehrauli-Gurgaon Rd, Sultanpur, New Delhi, 110030"). The name
   // above is deliberately short for tables; this is what tells a reviewer
   // exactly where a GPS visit happened. Null on legs logged before this was
   // captured, and on endpoints that never had one.
-  fromAddress String?
-  toAddress   String?
+  fromAddress          String?
+  toAddress            String?
   // Endpoint coordinate snapshots — populated for every new leg so the next
   // leg's source (= this leg's destination) resolves without a Site/custom
   // join. Null on legs created before this feature (fall back to Site coords).
-  fromLat     Float?
-  fromLng     Float?
-  toLat       Float?
-  toLng       Float?
+  fromLat              Float?
+  fromLng              Float?
+  toLat                Float?
+  toLng                Float?
   // How the destination was chosen: MASTER (Site), GPS (geolocated), CUSTOM
   // (manually-added personal location). Used for report filtering.
-  locationType String @default("MASTER") // MASTER | GPS | CUSTOM
-  manualDistance Boolean @default(false)  // true when distance was entered by hand (API unavailable)
+  locationType         String  @default("MASTER") // MASTER | GPS | CUSTOM
+  manualDistance       Boolean @default(false) // true when distance was entered by hand (API unavailable)
   // Why a hand-entered distance differs materially from the routed one
   // ("detour via client site", "road closed"). Required only past the
   // tolerance in actions/visit.ts; null on every automatic leg.
-  manualReason   String?
-  sequence    Int // order within the day (0 = first leg from office)
+  manualReason         String?
+  sequence             Int // order within the day (0 = first leg from office)
 
   // Proof-of-presence: the device fix that authorised this leg, verified
   // server-side against the destination's geofence before the row was written
@@ -231,10 +237,10 @@ model Journey {
   // before GPS verification became compulsory have no fix to record.
   gpsLat        Float?
   gpsLng        Float?
-  gpsAccuracy   Float?    // metres, device-reported
+  gpsAccuracy   Float? // metres, device-reported
   gpsCapturedAt DateTime? // when the device took the reading
-  gpsDistanceM  Float?    // server-measured metres from the destination
-  gpsRadiusM    Int?      // the radius that was enforced for that destination
+  gpsDistanceM  Float? // server-measured metres from the destination
+  gpsRadiusM    Int? // the radius that was enforced for that destination
 
   // Idempotency key minted on the device before the visit was queued. A visit
   // logged offline may be submitted more than once (retry after a lost
@@ -242,15 +248,22 @@ model Journey {
   // the pre-flight lookup in actions/visit.ts make every resubmission resolve
   // to this same row instead of creating another. Null on legs logged before
   // offline queueing existed.
-  clientVisitId String?   @unique
+  clientVisitId String? @unique
+
+  // The login that produced this location record: Employee.lastLoginAt as it
+  // stood when the leg was written. Distinct from createdAt (when the location
+  // was captured) — one login logs several trips through the day. Null on legs
+  // logged before login times were recorded; readers fall back to createdAt,
+  // which for those rows genuinely is when the person was at that location.
+  loginAt DateTime?
 
   distanceKm  Float // chosen distance used for reimbursement
   roadKm      Float? // road distance from provider
   haversineKm Float // straight-line fallback
   durationMin Int?
-  source      String  @default("HAVERSINE") // GOOGLE | OSRM | HAVERSINE | CACHE | MANUAL
+  source      String @default("HAVERSINE") // GOOGLE | OSRM | HAVERSINE | CACHE | MANUAL
   vehicleType String
-  amount      Float   @default(0) // computed reimbursable amount for this leg
+  amount      Float  @default(0) // computed reimbursable amount for this leg
 
   // Optional bill attachment (Supabase Storage, private bucket) — same scheme
   // as MiscellaneousExpense. Path + metadata only.
@@ -261,12 +274,12 @@ model Journey {
   billUploadedAt DateTime?
   billUploadedBy String?
 
-  arrivalVisitId String?   @unique
+  arrivalVisitId String?    @unique
   arrivalVisit   SiteVisit? @relation("ArrivalVisit", fields: [arrivalVisitId], references: [id])
 
-  employee Employee @relation(fields: [employeeId], references: [id])
-  fromSite Site?    @relation("FromSite", fields: [fromSiteId], references: [id])
-  toSite   Site?    @relation("ToSite", fields: [toSiteId], references: [id])
+  employee           Employee            @relation(fields: [employeeId], references: [id])
+  fromSite           Site?               @relation("FromSite", fields: [fromSiteId], references: [id])
+  toSite             Site?               @relation("ToSite", fields: [toSiteId], references: [id])
   fromCustomLocation UserCustomLocation? @relation("FromCustom", fields: [fromCustomLocationId], references: [id])
   toCustomLocation   UserCustomLocation? @relation("ToCustom", fields: [toCustomLocationId], references: [id])
 
@@ -303,12 +316,12 @@ model JourneyReset {
 
 // Memoised distance/duration between two coordinate pairs.
 model DistanceCache {
-  id          String  @id @default(cuid())
-  key         String  @unique // "lat,lng|lat,lng" rounded to 5dp
+  id          String   @id @default(cuid())
+  key         String   @unique // "lat,lng|lat,lng" rounded to 5dp
   roadKm      Float
   haversineKm Float
   durationMin Int
-  source      String  @default("GOOGLE")
+  source      String   @default("GOOGLE")
   createdAt   DateTime @default(now())
 
   @@index([key])
@@ -318,7 +331,7 @@ model DistanceCache {
 // (GPS + reverse-geocode) or entered manually. Private to the owning employee
 // until an admin promotes it to a global location (isGlobal = true).
 model UserCustomLocation {
-  id           String  @id @default(cuid())
+  id           String    @id @default(cuid())
   employeeId   String
   locationName String
   address      String?
@@ -329,12 +342,16 @@ model UserCustomLocation {
   state        String?
   country      String?
   postalCode   String?
-  source       String  @default("GPS") // GPS | MANUAL
-  isGlobal     Boolean @default(false)  // admin-approved for everyone
+  source       String    @default("GPS") // GPS | MANUAL
+  isGlobal     Boolean   @default(false) // admin-approved for everyone
   approvedAt   DateTime?
-  status       String  @default("ACTIVE") // ACTIVE | INACTIVE
+  // The login that saved this location (Employee.lastLoginAt at the time).
+  // Null on locations saved before login times were recorded — readers fall
+  // back to createdAt, which is when the location was actually captured.
+  loginAt      DateTime?
+  status       String    @default("ACTIVE") // ACTIVE | INACTIVE
 
-  employee Employee @relation(fields: [employeeId], references: [id])
+  employee Employee  @relation(fields: [employeeId], references: [id])
   fromLegs Journey[] @relation("FromCustom")
   toLegs   Journey[] @relation("ToCustom")
 
@@ -351,8 +368,8 @@ model UserCustomLocation {
 model MiscellaneousExpense {
   id             String  @id @default(cuid())
   employeeId     String
-  workDate       String  // YYYY-MM-DD — groups into the same day summary as journeys
-  category       String  // PARKING | TOLL | FOOD | TEA | REPAIR | WASH | FUEL | HOTEL | COURIER | OTHER
+  workDate       String // YYYY-MM-DD — groups into the same day summary as journeys
+  category       String // PARKING | TOLL | FOOD | TEA | REPAIR | WASH | FUEL | HOTEL | COURIER | OTHER
   customCategory String? // free text, required when category = OTHER
   amount         Float
   description    String?
@@ -364,7 +381,7 @@ model MiscellaneousExpense {
   billPath       String? // e.g. WAT-0001/2026/07/<uuid>.pdf
   billName       String? // original filename
   billType       String? // mime type
-  billSize       Int?    // bytes
+  billSize       Int? // bytes
   billUploadedAt DateTime?
   billUploadedBy String? // employeeId that uploaded
 
@@ -384,12 +401,12 @@ model MiscellaneousExpense {
 // ──────────────────────────────────────────────────────────────
 
 model Claim {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   employeeId  String
   periodMonth String // YYYY-MM
-  totalKm     Float    @default(0)
-  totalAmount Float    @default(0)
-  status      String   @default("DRAFT") // DRAFT | SUBMITTED | MANAGER_APPROVED | ADMIN_APPROVED | FINANCE_APPROVED | PAID | REJECTED
+  totalKm     Float     @default(0)
+  totalAmount Float     @default(0)
+  status      String    @default("DRAFT") // DRAFT | SUBMITTED | MANAGER_APPROVED | ADMIN_APPROVED | FINANCE_APPROVED | PAID | REJECTED
   submittedAt DateTime?
   paidAt      DateTime?
 
@@ -405,9 +422,9 @@ model Claim {
 }
 
 model ClaimItem {
-  id        String  @id @default(cuid())
+  id        String @id @default(cuid())
   claimId   String
-  journeyId String  @unique
+  journeyId String @unique
   km        Float
   amount    Float
 
@@ -460,14 +477,14 @@ model AuditLog {
 }
 
 model Notification {
-  id        String   @id @default(cuid())
+  id        String    @id @default(cuid())
   userId    String
   type      String // FORGOT_PUNCHOUT | APPROVAL_PENDING | CLAIM_APPROVED | CLAIM_REJECTED | REMINDER
   title     String
   body      String
   link      String?
   readAt    DateTime?
-  createdAt DateTime @default(now())
+  createdAt DateTime  @default(now())
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 

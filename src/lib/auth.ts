@@ -56,7 +56,14 @@ export async function login(email: string, password: string): Promise<SessionUse
       expiresAt: new Date(Date.now() + MAX_AGE * 1000),
     },
   });
-  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });
+  const loginAt = new Date();
+  await prisma.user.update({ where: { id: user.id }, data: { lastLoginAt: loginAt } });
+  // Keep the employee-side login time in step for accounts that have a linked
+  // staff record, so a password login stamps location records the same way
+  // picking your name on /app does.
+  if (user.employee) {
+    await prisma.employee.update({ where: { id: user.employee.id }, data: { lastLoginAt: loginAt } });
+  }
 
   const jar = await cookies();
   jar.set(COOKIE, token, {

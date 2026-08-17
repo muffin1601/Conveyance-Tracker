@@ -37,6 +37,15 @@ export async function setActiveEmployee(employeeId: string): Promise<{ ok: boole
     return { ok: false };
   }
 
+  // This is the app's login moment — there is no password step, picking your
+  // name IS signing in. Recorded in the database (not just the cookie) so every
+  // location logged afterwards can carry the login time into the reports, and
+  // so it survives a cleared cookie or a different device.
+  await prisma.employee.update({
+    where: { id: employee.id },
+    data: { lastLoginAt: new Date() },
+  });
+
   jar.set(EMP_COOKIE, employee.id, {
     httpOnly: true,
     sameSite: "lax",

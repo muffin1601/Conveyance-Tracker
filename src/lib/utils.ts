@@ -38,8 +38,50 @@ export function monthKey(d = new Date()): string {
 
 export function fmtTime(d: Date | string | null | undefined): string {
   if (!d) return "—";
-  return new Date(d).toLocaleTimeString("en-IN", {
+  // Timestamps are stored in UTC; the business reads them in IST. Without the
+  // explicit zone this rendered in the SERVER's zone, which on Vercel is UTC —
+  // a 3pm trip printed as 09:30.
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: APP_TZ,
     hour: "2-digit",
     minute: "2-digit",
-  });
+    hour12: true,
+    // en-IN renders the meridiem lowercase ("03:42 pm"); the reports read it
+    // uppercase, and Node/browser ICU builds disagree on the separator too.
+  }).format(new Date(d)).replace(/\s*([ap])\.?\s?m\.?$/i, (_m, p: string) => ` ${p.toUpperCase()}M`);
+}
+
+/** "17 Aug 2026" in the business timezone. */
+export function fmtDate(d: Date | string | null | undefined): string {
+  if (!d) return "—";
+  return new Intl.DateTimeFormat("en-IN", {
+    timeZone: APP_TZ,
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+  }).format(new Date(d));
+}
+
+/** "17 Aug 2026, 03:42 PM" — for single-column and export use. */
+export function fmtDateTime(d: Date | string | null | undefined): string {
+  if (!d) return "—";
+  return `${fmtDate(d)}, ${fmtTime(d)}`;
+}
+
+/**
+ * The login time to show for a location record.
+ *
+ * `loginAt` is the real thing: the moment the employee identified themselves on
+ * the device that logged this record. Records written before that was captured
+ * have none, so we fall back to `createdAt` — when the location itself was
+ * recorded, which for those rows is the same visit to the same place and is the
+ * honest answer. Nothing is invented: a record with neither reports "—".
+ */
+export function loginTimestamp(
+  r: { loginAt?: Date | string | null; createdAt?: Date | string | null },
+): Date | null {
+  const raw = r.loginAt ?? r.createdAt ?? null;
+  if (!raw) return null;
+  const d = new Date(raw);
+  return Number.isNaN(d.getTime()) ? null : d;
 }

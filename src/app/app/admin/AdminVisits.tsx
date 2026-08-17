@@ -4,7 +4,7 @@ import { useMemo, useState, useTransition } from "react";
 
 import { deleteVisit } from "@/app/actions/visit";
 import { Card, SectionTitle, Empty } from "@/components/ui";
-import { cn, inr, km } from "@/lib/utils";
+import { cn, fmtDate, fmtTime, inr, km, todayKey } from "@/lib/utils";
 import { LOCATION_TYPES, LOCATION_TYPE_LABEL, type LocationType } from "@/lib/enums";
 import { distanceSourceLabel, isRoadDistance } from "@/lib/routing/types";
 import { BillActions } from "@/components/BillActions";
@@ -18,6 +18,12 @@ interface Visit {
   /** Full street address of the destination, when one was recorded. */
   address: string | null;
   date: string;
+  /**
+   * When this leg was logged under a login session, ISO-8601 UTC. Rendered in
+   * IST. Null only if the row somehow carries no timestamp at all — those show
+   * "—" rather than a made-up time.
+   */
+  loginAt: string | null;
   distanceKm: number;
   amount: number;
   mode: string;
@@ -29,7 +35,7 @@ interface Visit {
   billType: string | null;
 }
 
-type SortKey = "date" | "employee" | "distanceKm" | "amount";
+type SortKey = "date" | "loginAt" | "employee" | "distanceKm" | "amount";
 
 /**
  * A column header that sorts. Clicking the active column flips direction;
@@ -68,6 +74,16 @@ function SortableHeader({
       </button>
     </th>
   );
+}
+
+/** The login stamp's calendar day in the business timezone, as YYYY-MM-DD. */
+function loginDay(iso: string): string {
+  return todayKey(new Date(iso));
+}
+
+/** The searchable text of a row's login stamp — same strings the table shows. */
+function loginText(v: Visit): string {
+  return v.loginAt ? `${fmtDate(v.loginAt)} ${fmtTime(v.loginAt)}` : "";
 }
 
 function modeLabel(m: string) {
@@ -137,7 +153,10 @@ export function AdminVisits({
       return (
         v.employee.toLowerCase().includes(needle) ||
         v.site.toLowerCase().includes(needle) ||
-        (v.address?.toLowerCase().includes(needle) ?? false)
+        (v.address?.toLowerCase().includes(needle) ?? false) ||
+        // Searching "17 aug" or "03:42 pm" finds the row, because that is what
+        // the table actually shows for it.
+        loginText(v).toLowerCase().includes(needle)
       );
     });
 
@@ -150,6 +169,14 @@ export function AdminVisits({
           return (a.distanceKm - b.distanceKm) * direction;
         case "amount":
           return (a.amount - b.amount) * direction;
+        case "loginAt": {
+          // Rows with no timestamp sort to the end in either direction rather
+          // than pretending to be the epoch.
+          const at = a.loginAt ? Date.parse(a.loginAt) : null;
+          const bt = b.loginAt ? Date.parse(b.loginAt) : null;
+          if (at == null || bt == null) return at == null ? (bt == null ? 0 : 1) : -1;
+          return (at - bt) * direction;
+        }
         case "date":
         default:
           // Same-day rows keep a stable, meaningful order by falling back to
@@ -169,8 +196,8 @@ export function AdminVisits({
             <input
               type="search"
               className="input h-8 w-44 py-0 pl-7 text-xs"
-              placeholder="Search name or place…"
-              aria-label="Search entries by employee, destination or address"
+              placeholder="Search name, place or time…"
+              aria-label="Search entries by employee, destination, address or login time"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
             />
@@ -201,6 +228,7 @@ export function AdminVisits({
                 <SortableHeader label="Date" sortKey="date" sort={sort} onSort={toggleSort} />
                 <SortableHeader label="Employee" sortKey="employee" sort={sort} onSort={toggleSort} />
                 <th className="py-2 pr-3 font-medium">Destination</th>
+                <SortableHeader label="Login Time" sortKey="loginAt" sort={sort} onSort={toggleSort} />
                 <th className="py-2 pr-3 font-medium">Type</th>
                 <th className="py-2 pr-3 font-medium">Mode</th>
                 <SortableHeader label="Km" sortKey="distanceKm" sort={sort} onSort={toggleSort} align="right" />
@@ -223,6 +251,16 @@ export function AdminVisits({
                       <span className="block text-xs text-muted max-w-[26rem] truncate" title={v.address}>
                         {v.address}
                       </span>
+                    )}
+                  </td>
+                  {/* Only the time: the Date column already says which day.
+                      The date reappears here only when the login actually fell
+                      on a different day (a trip logged either side of midnight),
+                      because then the two really are different facts. */}
+                  <td className="py-2 pr-3 tabular-nums whitespace-nowrap">
+                    {v.loginAt ? fmtTime(v.loginAt) : "—"}
+                    {v.loginAt && loginDay(v.loginAt) !== v.date && (
+                      <span className="block text-[11px] font-normal text-amber-600">{fmtDate(v.loginAt)}</span>
                     )}
                   </td>
                   <td className="py-2 pr-3 text-xs text-muted whitespace-nowrap">{LOCATION_TYPE_LABEL[v.locationType as LocationType] ?? v.locationType}</td>

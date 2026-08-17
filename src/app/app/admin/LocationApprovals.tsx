@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 import { Globe, MapPin, Undo2 } from "lucide-react";
 import { approveGlobalLocation } from "@/app/actions/locations";
 import { Card, SectionTitle, Empty } from "@/components/ui";
+import { fmtDateTime } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
 
 interface Loc {
@@ -15,6 +16,8 @@ interface Loc {
   source: string;
   isGlobal: boolean;
   employee: string;
+  /** Login behind this saved location, ISO-8601 UTC; null if unknown. */
+  loginAt: string | null;
 }
 
 export function LocationApprovals({ locations }: { locations: Loc[] }) {
@@ -57,7 +60,11 @@ export function LocationApprovals({ locations }: { locations: Loc[] }) {
                   <span className="text-xs text-muted">{l.source}</span>
                 </div>
                 {(l.address || l.city) && <p className="text-muted truncate mt-0.5">{l.address || [l.city, l.state].filter(Boolean).join(", ")}</p>}
-                <p className="text-xs text-muted">by {l.employee}</p>
+                {/* Who saved it, and when they were logged in when they did —
+                    the same login stamp the Entries table shows. */}
+                <p className="text-xs text-muted">
+                  by {l.employee} · {l.loginAt ? fmtDateTime(l.loginAt) : "Not available"}
+                </p>
               </div>
               {l.isGlobal ? (
                 <button type="button" disabled={pending} onClick={() => toggle(l.id, false)} className="btn-ghost text-xs shrink-0">

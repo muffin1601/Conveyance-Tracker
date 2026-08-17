@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { isSettingsUnlocked } from "@/app/actions/settings";
-import { monthKey } from "@/lib/utils";
+import { fmtDate, fmtTime, loginTimestamp, monthKey } from "@/lib/utils";
 import { legFromAddress, legFromName, legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { distanceSourceLabel } from "@/lib/routing/types";
 import { LOCATION_TYPE_LABEL, LOCATION_TYPES, type LocationType } from "@/lib/enums";
@@ -65,7 +65,10 @@ export async function GET(req: NextRequest) {
   });
 
   const header = [
-    "Employee Code", "Employee", "Department", "Date", "Leg",
+    // Login date and time sit beside the work date: the sheet is read as
+    // "who, when, where", and a date alone cannot separate a morning trip from
+    // an evening one. Same IST formatting as the on-screen report.
+    "Employee Code", "Employee", "Department", "Date", "Login Date", "Login Time", "Leg",
     // The two address columns sit next to the names they belong to, so a
     // reviewer reading the sheet left to right gets "where" before "how far".
     "From", "From Address", "To", "To Address", "Location Type", "Vehicle", "Distance (km)", "Distance Type", "Duration (min)", "Source", "Amount (INR)",
@@ -76,6 +79,7 @@ export async function GET(req: NextRequest) {
     lines.push(
       [
         j.employee.employeeCode, j.employee.name, j.employee.department, j.workDate,
+        fmtDate(loginTimestamp(j)), fmtTime(loginTimestamp(j)),
         j.sequence + 1,
         legFromName(j), legFromAddress(j) ?? "",
         legToName(j), legToAddress(j) ?? "",
