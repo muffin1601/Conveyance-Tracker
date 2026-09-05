@@ -67,6 +67,16 @@ async function drain(): Promise<SyncSummary> {
   // Sequential on purpose: legs chain to one another, so their order is part
   // of the data. Parallel syncing would scramble a day's journey.
   for (const visit of due) {
+    // Guard: a record missing required fields cannot be delivered and will
+    // crash the whole drain loop if we let it through. Permanently reject it
+    // so the employee sees a clear message instead of a silent loop.
+    if (!visit.destination || typeof visit.destination !== "object" || !("kind" in visit.destination)) {
+      console.warn("[visitSync] skipping malformed record (missing destination)", visit.clientVisitId);
+      await markRejected(visit.clientVisitId, "This visit record is incomplete and cannot be synced. Please dismiss it.", visit.attempts).catch(() => {});
+      summary.rejected++;
+      continue;
+    }
+
     try {
       await markSyncing(visit.clientVisitId);
     } catch {
