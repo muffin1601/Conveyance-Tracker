@@ -10,6 +10,8 @@ import { calculateRoadDistance } from "../src/lib/routing";
 import { haversineMeters } from "../src/lib/gps";
 
 const SHOWROOM_NAME = "Watcon Showroom";
+/** Amounts are being corrected only for the current accounting month. */
+const AMOUNT_CORRECTION_MONTH = "2026-09";
 const previousShowroom = { lat: 28.49847412109375, lng: 77.16339111328125 };
 const showroom = { lat: 28.541270961550648, lng: 77.27325607004377 };
 
@@ -26,7 +28,7 @@ async function main() {
       OR: [{ fromSiteId: site.id }, { toSiteId: site.id }],
     },
     select: {
-      id: true, fromSiteId: true, toSiteId: true, vehicleType: true, amount: true,
+      id: true, workDate: true, fromSiteId: true, toSiteId: true, vehicleType: true, amount: true,
       fromLat: true, fromLng: true, toLat: true, toLng: true,
     },
   });
@@ -66,7 +68,10 @@ async function main() {
     // to the corrected distance. Bus/Metro may contain an actual fare, so its
     // amount is intentionally preserved.
     let amount: number | undefined;
-    if (journey.vehicleType === "BIKE" || journey.vehicleType === "CAR") {
+    if (
+      journey.workDate.startsWith(AMOUNT_CORRECTION_MONTH) &&
+      (journey.vehicleType === "BIKE" || journey.vehicleType === "CAR")
+    ) {
       const oldFrom = journey.fromSiteId === site.id
         ? previousShowroom
         : { lat: journey.fromLat, lng: journey.fromLng };
