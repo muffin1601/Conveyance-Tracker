@@ -11,6 +11,7 @@ import { getActiveEmployees } from "@/lib/masterData";
 import { legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { isSettingsUnlocked } from "@/app/actions/settings";
 import { PinGate } from "@/components/PinGate";
+import { DistanceCorrections } from "./DistanceCorrections";
 
 export default async function AdminPage({
   searchParams,
@@ -42,7 +43,7 @@ export default async function AdminPage({
   /** Query string shared by every export link, so downloads match the view. */
   const exportQuery = `period=${period}${employeeId ? `&employee=${employeeId}` : ""}`;
 
-  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations] =
+  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations, corrections] =
     await Promise.all([
       prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }),
       prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }),
@@ -81,6 +82,7 @@ export default async function AdminPage({
         take: 200,
         include: { employee: { select: { name: true } } },
       }),
+      prisma.distanceCorrection.findMany({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } }, orderBy: { submittedAt: "desc" }, include: { employee: { select: { name: true } }, journey: { select: { workDate: true, fromName: true, toName: true } } } }),
     ]);
 
   const convAmount = journeyStats._sum.amount ?? 0;
@@ -154,6 +156,7 @@ export default async function AdminPage({
         }))}
         total={miscAmount}
       />
+      <DistanceCorrections rows={corrections.map(c => ({ id: c.id, employee: c.employee.name, date: c.journey.workDate, from: c.journey.fromName ?? "Start", to: c.journey.toName ?? "Destination", original: c.originalDistanceKm, submitted: c.submittedDistanceKm, status: c.status }))} />
 
       <LocationApprovals
         locations={customLocations.map((l) => ({

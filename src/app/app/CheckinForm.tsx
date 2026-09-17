@@ -1014,7 +1014,8 @@ export function CheckinForm({
           </div>
           <ol className="space-y-2">
             {[...journey.legs].reverse().map((l) => (
-              <li key={l.id} className="flex items-start gap-2.5 text-sm">
+              <li key={l.id} className="text-sm">
+                <div className="flex items-start gap-2.5">
                 <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-semibold tabular-nums text-brand">
                   {l.sequence + 1}
                 </span>
@@ -1030,7 +1031,8 @@ export function CheckinForm({
                   <span className="text-right tabular-nums">{km(l.distanceKm)} · {inr(l.amount)}</span>
                   <NavigateButton lat={l.toLat} lng={l.toLng} compact />
                 </span>
-                <DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} />
+                </div>
+                <div className="ml-7 mt-1"><DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} /></div>
               </li>
             ))}
           </ol>

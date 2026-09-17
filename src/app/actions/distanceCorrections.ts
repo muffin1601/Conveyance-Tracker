@@ -41,9 +41,13 @@ export async function submitDistanceCorrection(input: z.infer<typeof request>) {
   const endpointMatch = endpointDistance != null && endpointDistance <= DISTANCE_CORRECTION_CONFIG.endpointRadiusMeters;
   const usableGpsPoints = journey.gpsLat == null ? 0 : 1;
   const diff = distanceDifference(journey.distanceKm, v.submittedDistanceKm);
-  const decision = verificationDecision({ differencePercent: diff.differencePercent, endpointMatch, usableGpsPoints, hasScreenshot: true });
-  const created = await prisma.distanceCorrection.create({ data: { journeyId: journey.id, employeeId: journey.employeeId, originalDistanceKm: journey.distanceKm, submittedDistanceKm: v.submittedDistanceKm, finalDistanceKm: decision.status === "AUTO_VERIFIED" ? v.submittedDistanceKm : null, screenshotPath: v.screenshot.path, screenshotName: v.screenshot.name, screenshotType: v.screenshot.type, screenshotSize: v.screenshot.size, differenceKm: diff.differenceKm, differencePercent: diff.differencePercent, endpointMatch, usableGpsPoints, status: decision.status, reviewReason: decision.reason } });
-  await audit({ userId: user.id, action: "CREATE", entity: "DistanceCorrection", entityId: created.id, meta: { journeyId: journey.id, originalDistanceKm: journey.distanceKm, submittedDistanceKm: v.submittedDistanceKm, status: created.status } });
+  // The current app stores an arrival fix, not a continuous trail. Every
+  // request is therefore intentionally sent to an administrator for review.
+  const decision = { status: "MANUAL_REVIEW", reason: "Submitted for admin review." } as const;
+  const created = await prisma.distanceCorrection.create({ data: { journeyId: journey.id, employeeId: journey.employeeId, originalDistanceKm: journey.distanceKm, submittedDistanceKm: v.submittedDistanceKm, finalDistanceKm: null, screenshotPath: v.screenshot.path, screenshotName: v.screenshot.name, screenshotType: v.screenshot.type, screenshotSize: v.screenshot.size, differenceKm: diff.differenceKm, differencePercent: diff.differencePercent, endpointMatch, usableGpsPoints, status: decision.status, reviewReason: decision.reason } });
+  // Staff selected through the lightweight employee picker may not have a User
+  // row; never put an employee id into AuditLog.userId (a foreign key).
+  await audit({ userId: null, action: "CREATE", entity: "DistanceCorrection", entityId: created.id, meta: { employeeId: journey.employeeId, journeyId: journey.id, originalDistanceKm: journey.distanceKm, submittedDistanceKm: v.submittedDistanceKm, status: created.status } });
   revalidatePath("/app"); revalidatePath("/app/admin");
   return { status: created.status };
 }

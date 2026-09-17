@@ -73,3 +73,12 @@ body {
 table {
   border-collapse: collapse;
 }
+
+/* Phone-first controls: the tracker is used primarily on Android handsets. */
+@media (max-width: 640px) {
+  button, input, select, textarea { min-height: 44px; }
+  [role="dialog"] { width: 100% !important; max-width: none !important; padding: 1rem !important; }
+  [role="dialog"] .btn-primary,
+  [role="dialog"] .btn-ghost { width: 100%; justify-content: center; min-height: 48px; }
+  [role="dialog"] input { font-size: 16px; } /* Prevents iOS Safari zooming a form. */
+}
