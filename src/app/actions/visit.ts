@@ -866,7 +866,7 @@ export interface JourneyState {
     toLng: number | null;
     distanceKm: number;
     amount: number;
-    correction: { status: string; submittedDistanceKm: number; finalDistanceKm: number | null } | null;
+    correction: { id: string; status: string; submittedDistanceKm: number; finalDistanceKm: number | null } | null;
     mode: string;
     /** False for legs that were superseded by a "Reset Journey". */
     chained: boolean;
@@ -892,7 +892,7 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
         id: true, sequence: true, fromName: true, toName: true, toAddress: true,
         distanceKm: true, amount: true, vehicleType: true, createdAt: true,
         toLat: true, toLng: true,
-        distanceCorrection: { select: { status: true, submittedDistanceKm: true, finalDistanceKm: true } },
+        distanceCorrection: { select: { id: true, status: true, submittedDistanceKm: true, finalDistanceKm: true } },
         fromSite: { select: { name: true, latitude: true, longitude: true } },
         toSite: { select: { name: true, latitude: true, longitude: true, address: true } },
         fromCustomLocation: { select: { locationName: true } },

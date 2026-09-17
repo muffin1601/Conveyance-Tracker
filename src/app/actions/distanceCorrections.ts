@@ -53,9 +53,17 @@ export async function submitDistanceCorrection(input: z.infer<typeof request>) {
 }
 
 export async function getDistanceCorrectionImage(id: string) {
-  if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
-  const row = await prisma.distanceCorrection.findUnique({ where: { id }, select: { screenshotPath: true } });
+  const row = await prisma.distanceCorrection.findUnique({ where: { id }, select: { screenshotPath: true, employeeId: true } });
   if (!row) throw new Error("Correction not found."); return createSignedDownloadUrl(row.screenshotPath, 600);
+}
+
+/** Opens evidence for its owner, or for an administrator with the existing PIN gate. */
+export async function getCorrectionScreenshot(id: string) {
+  const row = await prisma.distanceCorrection.findUnique({ where: { id }, select: { screenshotPath: true, employeeId: true } });
+  if (!row) throw new Error("Correction not found.");
+  const user = await requireUser().catch(() => null);
+  if (user?.employeeId !== row.employeeId && !(await isSettingsUnlocked())) throw new Error("Not permitted.");
+  return createSignedDownloadUrl(row.screenshotPath, 600);
 }
 
 export async function reviewDistanceCorrection(input: { id: string; decision: "APPROVED" | "REJECTED"; finalDistanceKm?: number; note?: string }) {
