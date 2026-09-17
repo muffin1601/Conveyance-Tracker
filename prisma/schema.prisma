@@ -94,6 +94,7 @@ model Employee {
   customLocations UserCustomLocation[]
   miscExpenses    MiscellaneousExpense[]
   journeyResets   JourneyReset[]
+  distanceCorrections DistanceCorrection[]
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -284,6 +285,7 @@ model Journey {
   toCustomLocation   UserCustomLocation? @relation("ToCustom", fields: [toCustomLocationId], references: [id])
 
   claimItem ClaimItem?
+  distanceCorrection DistanceCorrection?
 
   createdAt DateTime @default(now())
 
@@ -295,6 +297,36 @@ model Journey {
   // every preview and every logged visit — this makes it an index-only seek.
   @@index([employeeId, workDate, sequence])
   @@index([createdAt])
+}
+
+// Kept separate so the original Journey.distanceKm is permanent evidence.
+model DistanceCorrection {
+  id                  String   @id @default(cuid())
+  journeyId           String   @unique
+  employeeId          String
+  originalDistanceKm  Float
+  submittedDistanceKm Float
+  finalDistanceKm     Float?
+  screenshotPath      String
+  screenshotName      String
+  screenshotType      String
+  screenshotSize      Int
+  status              String   @default("PENDING")
+  differenceKm        Float
+  differencePercent   Float
+  endpointMatch       Boolean  @default(false)
+  usableGpsPoints     Int      @default(0)
+  suspiciousActivity  Boolean  @default(false)
+  reviewReason        String?
+  submittedAt         DateTime @default(now())
+  reviewedAt          DateTime?
+  reviewedById        String?
+  adminNote           String?
+  journey             Journey  @relation(fields: [journeyId], references: [id], onDelete: Cascade)
+  employee            Employee @relation(fields: [employeeId], references: [id])
+
+  @@index([employeeId, status])
+  @@index([status, submittedAt])
 }
 
 // Marks the point at which an employee manually restarted their day's journey

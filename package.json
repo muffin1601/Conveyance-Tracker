@@ -8,7 +8,7 @@
     "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint .",
-    "test": "tsx --conditions=react-server --test scripts/test-routing.ts",
+    "test": "tsx --conditions=react-server --test scripts/test-routing.ts scripts/test-distance-correction.ts",
     "backfill:road-distance": "tsx --conditions=react-server scripts/backfill-road-distance.ts",
     "typecheck": "tsc --noEmit",
     "db:push": "prisma db push",

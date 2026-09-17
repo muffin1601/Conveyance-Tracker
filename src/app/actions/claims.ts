@@ -7,6 +7,7 @@ import { requireUser, requireRole } from "@/lib/auth";
 import { audit, notify } from "@/lib/audit";
 import { APPROVAL_FLOW, type ClaimStatus } from "@/lib/enums";
 import { monthKey } from "@/lib/utils";
+import { getEffectiveTripDistance } from "@/lib/distanceCorrection";
 
 /**
  * Build (or refresh) the monthly claim for the current employee from all
@@ -19,7 +20,7 @@ export async function buildMonthlyClaim(period?: string) {
 
   const journeys = await prisma.journey.findMany({
     where: { employeeId: user.employeeId, workDate: { startsWith: periodMonth } },
-    include: { claimItem: true },
+    include: { claimItem: true, distanceCorrection: { select: { status: true, finalDistanceKm: true } } },
   });
   if (journeys.length === 0) throw new Error("No journeys to claim for this period.");
 
@@ -35,11 +36,13 @@ export async function buildMonthlyClaim(period?: string) {
   let totalKm = 0;
   let totalAmount = 0;
   for (const j of journeys) {
-    totalKm += j.distanceKm;
-    totalAmount += j.amount;
+    const effectiveKm = getEffectiveTripDistance(j);
+    const effectiveAmount = j.distanceKm > 0 ? Math.round((j.amount / j.distanceKm) * effectiveKm * 100) / 100 : j.amount;
+    totalKm += effectiveKm;
+    totalAmount += effectiveAmount;
     if (!j.claimItem) {
       await prisma.claimItem.create({
-        data: { claimId: claim.id, journeyId: j.id, km: j.distanceKm, amount: j.amount },
+        data: { claimId: claim.id, journeyId: j.id, km: effectiveKm, amount: effectiveAmount },
       });
     }
   }

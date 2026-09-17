@@ -28,6 +28,7 @@ import type { TravelMode } from "@/lib/travel";
 import { isRoadDistance } from "@/lib/routing/types";
 import { cn, inr, km } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
+import { DistanceCorrection } from "./DistanceCorrection";
 import { t, type Lang, type DictKey } from "@/lib/i18n";
 
 interface Employee {
@@ -1029,6 +1030,7 @@ export function CheckinForm({
                   <span className="text-right tabular-nums">{km(l.distanceKm)} · {inr(l.amount)}</span>
                   <NavigateButton lat={l.toLat} lng={l.toLng} compact />
                 </span>
+                <DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} />
               </li>
             ))}
           </ol>
