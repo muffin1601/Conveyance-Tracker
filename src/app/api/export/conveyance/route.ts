@@ -71,7 +71,7 @@ export async function GET(req: NextRequest) {
     "Employee Code", "Employee", "Department", "Date", "Login Date", "Login Time", "Leg",
     // The two address columns sit next to the names they belong to, so a
     // reviewer reading the sheet left to right gets "where" before "how far".
-    "From", "From Address", "To", "To Address", "Location Type", "Vehicle", "Distance (km)", "Distance Type", "Duration (min)", "Source", "Amount (INR)",
+    "From", "From Address", "To", "To Address", "Location Type", "Vehicle", "Distance (km)", "Distance Type", "Distance Updated", "Duration (min)", "Source", "Amount (INR)",
     "Bill Available", "Bill File",
   ];
   const lines = [header.map(csvCell).join(",")];
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
         legFromName(j), legFromAddress(j) ?? "",
         legToName(j), legToAddress(j) ?? "",
         LOCATION_TYPE_LABEL[j.locationType as LocationType] ?? j.locationType,
-        j.vehicleType, j.distanceKm.toFixed(2), distanceSourceLabel(j.source),
+        j.vehicleType, j.distanceKm.toFixed(2), distanceSourceLabel(j.source), j.distanceUpdated ? "Yes" : "No",
         j.durationMin ?? "", j.source, j.amount.toFixed(2),
         j.billPath ? "Yes" : "No", j.billName ?? "",
       ].map(csvCell).join(","),

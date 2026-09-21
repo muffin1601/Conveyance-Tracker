@@ -128,6 +128,7 @@ export default async function AdminPage({
           // fallback for legs that pre-date it (see lib/utils#loginTimestamp).
           loginAt: loginTimestamp(j)?.toISOString() ?? null,
           distanceKm: j.distanceKm,
+          distanceUpdated: j.distanceUpdated,
           amount: j.amount,
           mode: j.vehicleType,
           distanceSource: j.source,

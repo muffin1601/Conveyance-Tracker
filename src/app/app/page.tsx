@@ -220,6 +220,7 @@ async function TodaySummary() {
                       <div className="flex shrink-0 items-center gap-1 pl-3">
                         <span className="text-right tabular-nums">
                           {km(j.distanceKm)} · {inr(j.amount)}
+                          {j.distanceUpdated && <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>}
                           <span className="ml-1 text-xs text-muted">{modeLabel(j.vehicleType)}</span>
                           {/* Running total after this trip — the day adding up
                               in front of you, so a wrong leg stands out before

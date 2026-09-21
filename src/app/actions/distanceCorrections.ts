@@ -9,6 +9,9 @@ import { buildBillPath, createSignedDownloadUrl, createSignedUploadUrl, isUpload
 import { distanceDifference, DISTANCE_CORRECTION_CONFIG, verificationDecision } from "@/lib/distanceCorrection";
 import { haversineMeters } from "@/lib/gps";
 import { isSettingsUnlocked } from "./settings";
+import { computeLegAmount } from "@/lib/conveyance";
+import { getSettings } from "@/lib/settings";
+import type { VehicleType } from "@/lib/enums";
 
 const image = z.object({ path: z.string().min(1), name: z.string().min(1).max(200), type: z.enum(["image/jpeg", "image/png", "image/webp"]), size: z.number().int().positive().max(5 * 1024 * 1024) });
 const request = z.object({ journeyId: z.string().min(1), submittedDistanceKm: z.number().finite().positive().max(DISTANCE_CORRECTION_CONFIG.maxTripKm), screenshot: image });
@@ -70,8 +73,37 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
   if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
   const final = input.finalDistanceKm;
   if (input.decision === "APPROVED" && (!Number.isFinite(final) || !final || final <= 0 || final > DISTANCE_CORRECTION_CONFIG.maxTripKm)) throw new Error("Enter a valid approved distance.");
-  const updated = await prisma.distanceCorrection.updateMany({ where: { id: input.id, status: { in: ["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"] } }, data: { status: input.decision, finalDistanceKm: input.decision === "APPROVED" ? final! : null, adminNote: input.note?.trim() || null, reviewedAt: new Date() } });
-  if (updated.count !== 1) throw new Error("This correction was already reviewed.");
-  await audit({ action: input.decision, entity: "DistanceCorrection", entityId: input.id, meta: { finalDistanceKm: final ?? null } });
+  const settings = input.decision === "APPROVED" ? await getSettings() : null;
+  const result = await prisma.$transaction(async (tx) => {
+    const correction = await tx.distanceCorrection.findUnique({
+      where: { id: input.id },
+      include: { journey: { select: { id: true, distanceKm: true, amount: true, vehicleType: true } } },
+    });
+    if (!correction || !["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"].includes(correction.status)) {
+      throw new Error("This correction was already reviewed.");
+    }
+
+    const reviewedAt = new Date();
+    await tx.distanceCorrection.update({
+      where: { id: correction.id },
+      data: { status: input.decision, finalDistanceKm: input.decision === "APPROVED" ? final! : null, adminNote: input.note?.trim() || null, reviewedAt },
+    });
+
+    if (input.decision === "APPROVED") {
+      // Flat and actual-fare modes are not distance-priced. Preserve their
+      // amount, while recalculating distance-priced trips at the configured rate.
+      const vehicleType = correction.journey.vehicleType as VehicleType;
+      const amount = ["BIKE", "CAR"].includes(vehicleType)
+        ? computeLegAmount(final!, vehicleType, settings!.rates)
+        : correction.journey.amount;
+      await tx.journey.update({
+        where: { id: correction.journey.id },
+        data: { distanceKm: final!, amount, distanceUpdated: true, distanceUpdatedAt: reviewedAt },
+      });
+      return { journeyId: correction.journey.id, originalDistanceKm: correction.journey.distanceKm, amount };
+    }
+    return { journeyId: correction.journey.id, originalDistanceKm: correction.journey.distanceKm, amount: correction.journey.amount };
+  });
+  await audit({ action: input.decision, entity: "DistanceCorrection", entityId: input.id, meta: { journeyId: result.journeyId, originalDistanceKm: result.originalDistanceKm, finalDistanceKm: final ?? null, amount: result.amount } });
   revalidatePath("/app"); revalidatePath("/app/admin"); return { ok: true };
 }

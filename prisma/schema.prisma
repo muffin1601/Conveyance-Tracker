@@ -259,6 +259,10 @@ model Journey {
   loginAt DateTime?
 
   distanceKm  Float // chosen distance used for reimbursement
+  // Set when an administrator approves a submitted distance correction. The
+  // original value remains in DistanceCorrection.originalDistanceKm for audit.
+  distanceUpdated   Boolean   @default(false)
+  distanceUpdatedAt DateTime?
   roadKm      Float? // road distance from provider
   haversineKm Float // straight-line fallback
   durationMin Int?

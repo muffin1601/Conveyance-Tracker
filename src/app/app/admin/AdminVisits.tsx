@@ -25,6 +25,8 @@ interface Visit {
    */
   loginAt: string | null;
   distanceKm: number;
+  /** True after an administrator-approved distance correction was applied. */
+  distanceUpdated: boolean;
   amount: number;
   mode: string;
   /** How the distance was obtained — OSRM/CACHE/GOOGLE/HAVERSINE/MANUAL. */
@@ -267,6 +269,9 @@ export function AdminVisits({
                   <td className="py-2 pr-3">{modeLabel(v.mode)}</td>
                   <td className="py-2 pr-3 text-right tabular-nums">
                     {km(v.distanceKm)}
+                    {v.distanceUpdated && (
+                      <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>
+                    )}
                     {/* Only the exceptions are called out. Marking every routed
                         row "Road distance" would be noise on a dense table;
                         what a reviewer needs to spot is the row that ISN'T. */}
