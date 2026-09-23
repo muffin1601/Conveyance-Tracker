@@ -1032,7 +1032,7 @@ export function CheckinForm({
                   <NavigateButton lat={l.toLat} lng={l.toLng} compact />
                 </span>
                 </div>
-                <div className="ml-7 mt-1"><DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} /></div>
+                <div className="ml-7 mt-1"><DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} lang={lang} /></div>
               </li>
             ))}
           </ol>

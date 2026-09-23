@@ -229,6 +229,27 @@ const DICT = {
   journeyRestarted: { en: "Journey was restarted after this trip", hi: "इस trip के बाद journey फिर से शुरू हुई" },
   journeyTotal: { en: "Journey Total", hi: "कुल Journey" },
 
+  // ── Correct a logged distance ─────────────────────────────────────
+  correctDistance: { en: "Correct Distance", hi: "दूरी सुधारें" },
+  correctDistanceHint: { en: "Is this distance incorrect?", hi: "क्या यह दूरी गलत है?" },
+  correctDistanceHelp: { en: "Send a Google Maps screenshot and the correct route distance.", hi: "Google Maps का screenshot और सही route की दूरी भेजें।" },
+  correctTripDistance: { en: "Correct Trip Distance", hi: "Trip की दूरी सुधारें" },
+  uploadMapScreenshot: { en: "Upload Google Maps Screenshot", hi: "Google Maps का Screenshot Upload करें" },
+  chooseScreenshotFirst: { en: "Choose a screenshot first.", hi: "पहले screenshot चुनें।" },
+  uploadScreenshotHint: { en: "Upload a Google Maps screenshot that shows the route and distance.", hi: "Google Maps का वह screenshot upload करें जिसमें route और दूरी दिख रही हो।" },
+  howMuchGoogleMaps: { en: "What distance does Google Maps show?", hi: "Google Maps में कितनी दूरी दिख रही है?" },
+  reviewCorrection: { en: "Review correction", hi: "सुधार जाँचें" },
+  recordedDistance: { en: "Recorded", hi: "दर्ज दूरी" },
+  submittedDistance: { en: "Submitted", hi: "भेजी गई दूरी" },
+  submitCorrection: { en: "Submit Correction", hi: "सुधार भेजें" },
+  submittingCorrection: { en: "Submitting…", hi: "भेजा जा रहा है…" },
+  correctionSubmitted: { en: "Correction submitted", hi: "सुधार भेज दिया गया" },
+  correctionSubmittedHelp: { en: "Your admin will review the screenshot and update the distance.", hi: "आपका admin screenshot जाँचकर दूरी update करेगा।" },
+  correctionPending: { en: "Correction pending review", hi: "सुधार जाँच के लिए बाकी है" },
+  correctionVerified: { en: "Distance corrected", hi: "दूरी सुधार दी गई" },
+  correctionNotApproved: { en: "Correction not approved", hi: "सुधार स्वीकृत नहीं हुआ" },
+  viewScreenshot: { en: "View screenshot", hi: "Screenshot देखें" },
+
   // ── Misc expenses ────────────────────────────────────────────────
   employee: { en: "Employee", hi: "कर्मचारी" },
   addExpense: { en: "Add Expense", hi: "खर्चा जोड़ें" },

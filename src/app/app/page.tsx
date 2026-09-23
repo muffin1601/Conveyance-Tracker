@@ -16,6 +16,7 @@ import { ArrowRight } from "lucide-react";
 import { CheckinForm } from "./CheckinForm";
 import { MiscExpenses } from "./MiscExpenses";
 import { JourneyBill } from "./JourneyBill";
+import { DistanceCorrection } from "./DistanceCorrection";
 
 /**
  * Today's summary must reflect the live database, not a build-time snapshot.
@@ -110,6 +111,7 @@ async function TodaySummary() {
         toSite: { select: { name: true, city: true, latitude: true, longitude: true } },
         fromCustomLocation: { select: { locationName: true } },
         toCustomLocation: { select: { locationName: true } },
+        distanceCorrection: { select: { id: true, status: true, submittedDistanceKm: true, finalDistanceKm: true } },
       },
     }),
     prisma.miscellaneousExpense.findMany({
@@ -245,6 +247,12 @@ async function TodaySummary() {
                         />
                       </div>
                     )}
+                    <DistanceCorrection
+                      journeyId={j.id}
+                      recordedKm={j.distanceKm}
+                      correction={j.distanceCorrection}
+                      lang={lang}
+                    />
                   </li>
                 ))}
               </ol>
