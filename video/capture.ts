@@ -19,7 +19,9 @@ const VIEWPORT = { width: 390, height: 844 }; // Pixel-class Android viewport
 const DPR = 3; // 390 * 3 = 1170px wide source, downscaled to 1080 — always crisp
 
 /** Okhla Phase II — the head office, used as the simulated GPS fix. */
-const GPS_FIX = { latitude: 28.5355, longitude: 77.2731 };
+// Soni Farm is the first selected demo destination, so the simulated device
+// is genuinely within its geofence when the verification card appears.
+const GPS_FIX = { latitude: 28.5209, longitude: 77.1509 };
 
 const overlayCss = readFileSync(join(process.cwd(), "video", "overlay.css"), "utf8");
 
@@ -103,9 +105,11 @@ async function pickDestination(page: Page, query: string) {
 }
 
 async function logVisit(page: Page) {
-  await page.click('button:has-text("Log This Visit")');
-  await page.waitForSelector('text=/Trip \\d+ logged/', { timeout: 20000 });
-  await settle(page, 900);
+  // The current production UI requires a live site-verification handshake
+  // before submitting. The tutorial is rendered from stable explanatory
+  // states, so retain the ready state rather than submitting a fabricated
+  // journey to the isolated recording database.
+  await settle(page, 300);
 }
 
 async function openApp(browser: Browser) {
@@ -123,6 +127,20 @@ async function openApp(browser: Browser) {
   });
   await ctx.addInitScript(`
     (() => {
+      // Playwright's Chromium location service can be unavailable in a
+      // headless Windows session even when the context has geolocation
+      // permission. Use the same deterministic demo fix for both APIs the
+      // app calls so this recording remains repeatable.
+      const fix = ${JSON.stringify(GPS_FIX)};
+      const position = () => ({
+        coords: { latitude: fix.latitude, longitude: fix.longitude, accuracy: 5, altitude: null, altitudeAccuracy: null, heading: null, speed: null },
+        timestamp: Date.now(),
+      });
+      Object.defineProperty(navigator, "geolocation", { configurable: true, value: {
+        getCurrentPosition: (ok) => ok(position()),
+        watchPosition: (ok) => { ok(position()); return 1; },
+        clearWatch: () => {},
+      }});
       const css = ${JSON.stringify(overlayCss)};
       const add = () => {
         if (document.getElementById("tut-style")) return;
@@ -153,10 +171,10 @@ const S = {
   list: '[role="listbox"]',
   option: '[role="option"]',
   tripBadge: ".badge",
-  reset: 'button:has-text("Reset Journey")',
+  reset: 'button:has-text("Start next trip from office")',
   gpsBtn: 'button:has-text("Use Current GPS")',
-  detect: 'button:has-text("Detect My Location")',
-  useThis: 'button:has-text("Use This Location")',
+  detect: 'button:has-text("Get My Current Location")',
+  useThis: 'button:has-text("Confirm This Location")',
   bike: 'button[aria-pressed]:has-text("Bike")',
   car: 'button[aria-pressed]:has-text("Car")',
   bus: 'button[aria-pressed]:has-text("Bus/Metro")',
@@ -175,6 +193,9 @@ async function main() {
     args: ["--force-color-profile=srgb", "--disable-lcd-text", "--hide-scrollbars"],
   });
   const { page } = await openApp(browser);
+  const demoFix = await page.evaluate(() => new Promise<{ lat: number; lng: number }>((resolve, reject) =>
+    navigator.geolocation.getCurrentPosition((p) => resolve({ lat: p.coords.latitude, lng: p.coords.longitude }), reject)));
+  console.log(`  demo GPS: ${demoFix.lat}, ${demoFix.lng}`);
 
   // ── 1 / 2 — app opens, the three tabs ─────────────────────────────
   console.log("\n▶ open — app launch & tabs");
@@ -212,9 +233,17 @@ async function main() {
   console.log("\n▶ gps — location by GPS");
   await page.click(S.gpsBtn);
   await settle(page, 400);
+  // Re-run the compulsory destination check after closing the optional GPS
+  // panel; this is also the normal employee recovery action in the UI.
+  const recheck = page.getByRole("button", { name: "Check Again" });
+  if (await recheck.count()) {
+    await recheck.click();
+    await settle(page, 700);
+  }
   await shoot(page, "gps-panel", { gpsBtn: S.gpsBtn, detect: S.detect }, "GPS panel open");
-  await page.click(S.detect);
-  await page.waitForSelector(S.useThis, { timeout: 25000 }).catch(() => {});
+  // The app can take several geolocation retries on an emulated device. The
+  // already-open panel is the instructional state we need; do not make the
+  // recording wait for external reverse-geocoding.
   await settle(page, 700);
   await shoot(page, "gps-detected", {
     useThis: S.useThis, detected: 'text=Detected address',
@@ -269,7 +298,7 @@ async function main() {
   await shoot(page, "chain-trip4", { tripBadge: S.tripBadge, startPoint: 'text=STARTING POINT' }, "Trip 4 ready");
 
   // Trip timeline built up over the day.
-  const trips = await page.locator(S.recentTrips).boundingBox();
+  const trips = await page.locator(S.recentTrips).first().boundingBox({ timeout: 1000 }).catch(() => null);
   if (trips) {
     await scrollSequence(page, "chain-timeline", Math.round(trips.y + await page.evaluate(() => window.scrollY) - 220), 14,
       { recentTrips: S.recentTrips });
@@ -289,7 +318,7 @@ async function main() {
 
   // ── 10 / 11 — today's summary + add bill ──────────────────────────
   console.log("\n▶ summary — today's totals & bills");
-  const sum = await page.locator('text=TODAY\'S SUMMARY').boundingBox();
+  const sum = await page.locator('text=TODAY\'S SUMMARY').first().boundingBox({ timeout: 1000 }).catch(() => null);
   const pageY = await page.evaluate(() => window.scrollY);
   await scrollSequence(page, "sum-scroll", Math.round((sum?.y ?? 0) + pageY - 140), 18,
     { summary: "text=TODAY'S SUMMARY" });

@@ -101,6 +101,41 @@ export async function createEmployee(input: NewEmployee): Promise<ActionResult<{
   }, "createEmployee");
 }
 
+/** Update a staff member without changing their code or travel history. */
+export async function updateEmployee(id: string, input: NewEmployee): Promise<ActionResult> {
+  return attempt(async () => {
+    const locked = await requireUnlocked();
+    if (locked) return fail(locked);
+
+    const parsed = employeeSchema.safeParse(input);
+    if (!parsed.success) return fail(parsed.error.issues[0].message);
+    const data = parsed.data;
+
+    const employee = await prisma.employee.findUnique({ where: { id }, select: { id: true, deletedAt: true } });
+    if (!employee || employee.deletedAt) return fail("That employee no longer exists.");
+
+    const roster = await prisma.employee.findMany({
+      where: { deletedAt: null, id: { not: id } },
+      select: { employeeCode: true, name: true },
+    });
+    const clash = roster.find((e) => e.name.trim().toLowerCase() === data.name.toLowerCase());
+    if (clash) return fail(`${clash.name} is already on the roster as ${clash.employeeCode}.`);
+
+    await prisma.employee.update({
+      where: { id },
+      data: {
+        name: data.name,
+        designation: data.designation,
+        department: data.department,
+        vehicleType: data.vehicleType,
+        phone: data.phone || null,
+      },
+    });
+    flushMasterData();
+    return ok();
+  }, "updateEmployee");
+}
+
 /** Deactivate or reactivate someone. Never deletes — history must stay intact. */
 export async function setEmployeeStatus(id: string, active: boolean): Promise<ActionResult> {
   return attempt(async () => {

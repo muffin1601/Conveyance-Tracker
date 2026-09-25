@@ -23,7 +23,7 @@ export default async function SettingsPage() {
       orderBy: [{ status: "asc" }, { name: "asc" }],
       select: {
         id: true, employeeCode: true, name: true,
-        designation: true, department: true, vehicleType: true, status: true,
+        designation: true, department: true, vehicleType: true, phone: true, status: true,
         defaultOriginSiteId: true,
       },
     }),

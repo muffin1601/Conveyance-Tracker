@@ -2,8 +2,8 @@
 
 import { useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus, Check, X, Search, UserPlus, Power, MapPin } from "lucide-react";
-import { createEmployee, setEmployeeStatus, setEmployeeOrigin } from "@/app/actions/roster";
+import { Loader2, Plus, Check, X, Search, UserPlus, Power, MapPin, Pencil } from "lucide-react";
+import { createEmployee, updateEmployee, setEmployeeStatus, setEmployeeOrigin } from "@/app/actions/roster";
 import { Card, SectionTitle, Empty } from "@/components/ui";
 import { VEHICLE_TYPES, VEHICLE_LABEL, type VehicleType } from "@/lib/enums";
 import { errorMessage } from "@/lib/errors";
@@ -16,6 +16,7 @@ export interface StaffRow {
   designation: string;
   department: string;
   vehicleType: string;
+  phone: string | null;
   status: string;
   /** null = the default (head office). Otherwise the site this person's day starts from. */
   defaultOriginSiteId: string | null;
@@ -46,6 +47,7 @@ export function StaffManager({
 }) {
   const router = useRouter();
   const [adding, setAdding] = useState(false);
+  const [editing, setEditing] = useState<StaffRow | null>(null);
   const [query, setQuery] = useState("");
   const [pending, start] = useTransition();
   const [error, setError] = useState("");
@@ -84,16 +86,30 @@ export function StaffManager({
     if (name.trim().length < 2) { setError("Enter the person's name."); return; }
     start(async () => {
       try {
-        const r = await createEmployee({ name, designation, department, vehicleType, phone });
+        const input = { name, designation, department, vehicleType, phone };
+        const r = editing ? await updateEmployee(editing.id, input) : await createEmployee(input);
         if (!r.ok) { setError(r.error); return; }
-        setAdded(`${name.trim()} added as ${r.data.employeeCode}.`);
+        setAdded(editing ? `${name.trim()} updated.` : `${name.trim()} added as ${(r.data as { employeeCode: string }).employeeCode}.`);
         reset();
         setAdding(false);
+        setEditing(null);
         router.refresh();
       } catch (e) {
         setError(errorMessage(e));
       }
     });
+  }
+
+  function beginEdit(row: StaffRow) {
+    setName(row.name);
+    setDesignation(row.designation);
+    setDepartment(row.department);
+    setVehicleType(row.vehicleType as VehicleType);
+    setPhone(row.phone ?? "");
+    setEditing(row);
+    setAdding(true);
+    setError("");
+    setAdded("");
   }
 
   function toggle(row: StaffRow) {
@@ -152,7 +168,8 @@ export function StaffManager({
       ) : (
         <div className="space-y-3 rounded-lg border p-3">
           <div className="flex items-center gap-2 text-sm font-medium">
-            <Plus className="h-4 w-4 text-brand" /> New staff member
+            {editing ? <Pencil className="h-4 w-4 text-brand" /> : <Plus className="h-4 w-4 text-brand" />}
+            {editing ? `Edit ${editing.name}` : "New staff member"}
           </div>
 
           <div>
@@ -204,9 +221,9 @@ export function StaffManager({
           <div className="flex gap-2">
             <button type="button" onClick={submit} disabled={pending} className="btn-primary flex-1 text-sm">
               {pending ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              {pending ? "Adding…" : "Add Staff"}
+              {pending ? (editing ? "Saving..." : "Adding...") : (editing ? "Save Changes" : "Add Staff")}
             </button>
-            <button type="button" onClick={() => { setAdding(false); reset(); setError(""); }} className="btn-ghost text-sm">
+            <button type="button" onClick={() => { setAdding(false); setEditing(null); reset(); setError(""); }} className="btn-ghost text-sm">
               Cancel
             </button>
           </div>
@@ -241,14 +258,21 @@ export function StaffManager({
                       {s.designation} · {s.department} · {VEHICLE_LABEL[s.vehicleType as VehicleType] ?? s.vehicleType}
                     </span>
                   </span>
-                  <button type="button" onClick={() => toggle(s)} disabled={pending}
-                    title={s.status === "ACTIVE" ? "Remove from picker" : "Restore to picker"}
-                    className={cn("shrink-0 rounded p-1.5 transition disabled:opacity-50",
-                      s.status === "ACTIVE" ? "text-muted hover:text-red-600" : "text-muted hover:text-green-600")}
-                    aria-label={s.status === "ACTIVE" ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}>
-                    {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" />
-                      : s.status === "ACTIVE" ? <X className="h-4 w-4" /> : <Power className="h-4 w-4" />}
-                  </button>
+                  <span className="flex shrink-0 items-center gap-1">
+                    <button type="button" onClick={() => beginEdit(s)} disabled={pending}
+                      title={`Edit ${s.name}`} className="rounded p-1.5 text-muted transition hover:text-brand disabled:opacity-50"
+                      aria-label={`Edit ${s.name}`}>
+                      <Pencil className="h-4 w-4" />
+                    </button>
+                    <button type="button" onClick={() => toggle(s)} disabled={pending}
+                      title={s.status === "ACTIVE" ? "Remove from picker" : "Restore to picker"}
+                      className={cn("rounded p-1.5 transition disabled:opacity-50",
+                        s.status === "ACTIVE" ? "text-muted hover:text-red-600" : "text-muted hover:text-green-600")}
+                      aria-label={s.status === "ACTIVE" ? `Deactivate ${s.name}` : `Reactivate ${s.name}`}>
+                      {busyId === s.id ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : s.status === "ACTIVE" ? <X className="h-4 w-4" /> : <Power className="h-4 w-4" />}
+                    </button>
+                  </span>
                 </div>
 
                 {hasAlternativeOrigin && (

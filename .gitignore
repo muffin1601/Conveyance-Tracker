@@ -8,7 +8,13 @@ dev.db*
 next-env.d.ts
 /build
 .playwright-mcp/
+*.tsbuildinfo
+
+# Office / temporary files
+~$*
 
 # Tutorial video build artefacts (large; regenerate with npm run video:*)
 video/build/
 video/out/
+video/tools/ffmpeg/
+video/tools/*.zip
