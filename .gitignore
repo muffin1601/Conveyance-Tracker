@@ -2,7 +2,7 @@ node_modules
 .next
 .env
 *.db
-*.db-journal
+*.db-journalhttps://www.google.com/maps/place/28%C2%B032'13.9%22N+77%C2%B015'42.3%22E/@28.5371808,77.259183,654m/data=!3m2!1e3!4b1!4m4!3m3!8m2!3d28.5371808!4d77.2617579?hl=en&entry=ttu&g_ep=EgoyMDI2MDkyMy4wIKXMDSoASAFQAw%3D%3D
 dev.db*
 .DS_Store
 next-env.d.ts
