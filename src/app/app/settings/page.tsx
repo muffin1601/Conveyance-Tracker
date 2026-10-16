@@ -5,6 +5,7 @@ import { isSettingsUnlocked } from "@/app/actions/settings";
 import { SettingsForm } from "./SettingsForm";
 import { StaffManager } from "./StaffManager";
 import { LocationManager } from "./LocationManager";
+import { CorrectionHistory } from "./CorrectionHistory";
 import { PinGate } from "@/components/PinGate";
 
 /** Staff and sites are edited here, so this page must never serve a stale list. */
@@ -16,7 +17,7 @@ export default async function SettingsPage() {
     return <PinGate title="Settings locked" subtitle="Enter the PIN to manage company details, staff and locations." />;
   }
 
-  const [settings, staff, sites, startingPoints] = await Promise.all([
+  const [settings, staff, sites, startingPoints, correctionHistory] = await Promise.all([
     getSettings(),
     prisma.employee.findMany({
       where: { deletedAt: null },
@@ -36,6 +37,22 @@ export default async function SettingsPage() {
       },
     }),
     getStartingPointSites(),
+    prisma.distanceCorrection.findMany({
+      where: { status: { in: ["APPROVED", "REJECTED"] } },
+      orderBy: [{ reviewedAt: "desc" }, { submittedAt: "desc" }],
+      select: {
+        id: true,
+        originalDistanceKm: true,
+        submittedDistanceKm: true,
+        finalDistanceKm: true,
+        status: true,
+        reviewedAt: true,
+        adminNote: true,
+        screenshotName: true,
+        employee: { select: { name: true } },
+        journey: { select: { workDate: true, fromName: true, toName: true } },
+      },
+    }),
   ]);
 
   // Offer the values already in use as suggestions, so new entries stay
@@ -67,6 +84,22 @@ export default async function SettingsPage() {
       </div>
 
       <SettingsForm settings={settings} />
+      <CorrectionHistory
+        rows={correctionHistory.map((correction) => ({
+          id: correction.id,
+          employee: correction.employee.name,
+          date: correction.journey.workDate,
+          from: correction.journey.fromName ?? "Start",
+          to: correction.journey.toName ?? "Destination",
+          original: correction.originalDistanceKm,
+          submitted: correction.submittedDistanceKm,
+          final: correction.finalDistanceKm,
+          status: correction.status as "APPROVED" | "REJECTED",
+          reviewedAt: correction.reviewedAt?.toISOString() ?? null,
+          adminNote: correction.adminNote,
+          screenshotName: correction.screenshotName,
+        }))}
+      />
       <StaffManager staff={staff} hints={hints} startingPoints={startingPoints} />
       <LocationManager sites={sites} />
     </div>
