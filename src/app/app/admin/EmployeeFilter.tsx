@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Loader2, Users } from "lucide-react";
 import { Combobox, type ComboOption } from "@/components/Combobox";
 
@@ -21,6 +21,7 @@ export function EmployeeFilter({
   period: string;
 }) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [pending, start] = useTransition();
 
   const options = useMemo<ComboOption[]>(
@@ -29,8 +30,11 @@ export function EmployeeFilter({
   );
 
   function choose(id: string) {
-    const q = new URLSearchParams({ period });
+    const q = new URLSearchParams(searchParams.toString());
+    q.set("period", period);
     if (id) q.set("employee", id);
+    else q.delete("employee");
+    q.delete("page");
     start(() => router.push(`/app/admin?${q.toString()}`));
   }
 

@@ -1,12 +1,13 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import { Trash2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { adminDeleteMiscExpense } from "@/app/actions/misc";
 import { Card, SectionTitle, Empty } from "@/components/ui";
 import { inr } from "@/lib/utils";
 import { MISC_CATEGORY_LABEL, type MiscCategory } from "@/lib/enums";
 import { BillActions } from "@/components/BillActions";
+import { errorMessage } from "@/lib/errors";
 
 interface MiscRow {
   id: string;
@@ -28,12 +29,22 @@ function catLabel(m: MiscRow) {
 export function AdminMisc({ items, total }: { items: MiscRow[]; total: number }) {
   const [pending, start] = useTransition();
   const [rows, setRows] = useState(items);
+  const [error, setError] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   function remove(id: string) {
-    if (!confirm("Delete this expense?")) return;
+    if (pending || !confirm("Delete this expense? This cannot be undone.")) return;
+    setError("");
+    setDeletingId(id);
     start(async () => {
-      await adminDeleteMiscExpense(id);
-      setRows((r) => r.filter((x) => x.id !== id));
+      try {
+        await adminDeleteMiscExpense(id);
+        setRows((r) => r.filter((x) => x.id !== id));
+      } catch (e) {
+        setError(errorMessage(e));
+      } finally {
+        setDeletingId(null);
+      }
     });
   }
 
@@ -43,6 +54,8 @@ export function AdminMisc({ items, total }: { items: MiscRow[]; total: number })
         <SectionTitle>Miscellaneous Expenses</SectionTitle>
         <span className="text-sm font-medium tabular-nums">Total: {inr(total)}</span>
       </div>
+      <p className="-mt-2 mb-3 text-xs text-muted">Review non-travel costs separately from conveyance before exporting or deleting.</p>
+      {error && <p className="mb-3 rounded-md border border-red-500/30 bg-red-500/10 p-2.5 text-sm text-red-600" role="alert">{error}</p>}
       {rows.length === 0 ? (
         <Empty>No miscellaneous expenses this period.</Empty>
       ) : (
@@ -73,8 +86,8 @@ export function AdminMisc({ items, total }: { items: MiscRow[]; total: number })
                   </td>
                   <td className="py-2 pr-3 text-right tabular-nums">{inr(m.amount)}</td>
                   <td className="py-2 text-right">
-                    <button onClick={() => remove(m.id)} disabled={pending} className="text-muted hover:text-red-600" aria-label="Delete expense">
-                      <Trash2 className="h-4 w-4" />
+                    <button onClick={() => remove(m.id)} disabled={pending} className="text-muted hover:text-red-600 disabled:opacity-50" aria-label={`Delete ${catLabel(m)} expense`}>
+                      {deletingId === m.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                     </button>
                   </td>
                 </tr>

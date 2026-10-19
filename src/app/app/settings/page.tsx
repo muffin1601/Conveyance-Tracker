@@ -7,15 +7,19 @@ import { StaffManager } from "./StaffManager";
 import { LocationManager } from "./LocationManager";
 import { CorrectionHistory } from "./CorrectionHistory";
 import { PinGate } from "@/components/PinGate";
+import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 
 /** Staff and sites are edited here, so this page must never serve a stale list. */
 export const dynamic = "force-dynamic";
 
-export default async function SettingsPage() {
+export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ tab?: string }> }) {
   const unlocked = await isSettingsUnlocked();
   if (!unlocked) {
     return <PinGate title="Settings locked" subtitle="Enter the PIN to manage company details, staff and locations." />;
   }
+  const sp = await searchParams;
+  const validTabs = ["general", "rates", "security", "staff", "locations", "history"] as const;
+  const tab = validTabs.includes(sp.tab as typeof validTabs[number]) ? sp.tab as typeof validTabs[number] : "general";
 
   const [settings, staff, sites, startingPoints, correctionHistory] = await Promise.all([
     getSettings(),
@@ -77,14 +81,28 @@ export default async function SettingsPage() {
   };
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div>
-        <h2 className="text-lg font-semibold">Settings</h2>
-        <p className="text-sm text-muted">Company details, conveyance rates, staff and locations.</p>
+    <div className="max-w-5xl space-y-5">
+      <div className="rounded-lg border bg-surface p-5">
+        <h2 className="text-xl font-semibold tracking-tight">Settings</h2>
+        <p className="mt-1 text-sm text-muted">Manage company defaults, reimbursement rates, people, and approved locations.</p>
+        <div className="mt-4 grid gap-2 text-xs text-muted sm:grid-cols-3">
+          <p className="rounded-md bg-bg px-3 py-2"><span className="font-medium text-fg">1.</span> Update company details and rates</p>
+          <p className="rounded-md bg-bg px-3 py-2"><span className="font-medium text-fg">2.</span> Keep the staff roster current</p>
+          <p className="rounded-md bg-bg px-3 py-2"><span className="font-medium text-fg">3.</span> Check location pins before use</p>
+        </div>
       </div>
 
-      <SettingsForm settings={settings} />
-      <CorrectionHistory
+      <WorkspaceTabs value={tab} tabs={[
+        { id: "general", label: "General" },
+        { id: "rates", label: "Conveyance rates" },
+        { id: "security", label: "Security" },
+        { id: "staff", label: "Staff", count: staff.length },
+        { id: "locations", label: "Locations", count: sites.length },
+        { id: "history", label: "Correction history", count: correctionHistory.length },
+      ]} />
+
+      {(tab === "general" || tab === "rates" || tab === "security") && <SettingsForm settings={settings} section={tab as "general" | "rates" | "security"} />}
+      {tab === "history" && <CorrectionHistory
         rows={correctionHistory.map((correction) => ({
           id: correction.id,
           employee: correction.employee.name,
@@ -99,9 +117,9 @@ export default async function SettingsPage() {
           adminNote: correction.adminNote,
           screenshotName: correction.screenshotName,
         }))}
-      />
-      <StaffManager staff={staff} hints={hints} startingPoints={startingPoints} />
-      <LocationManager sites={sites} />
+      />}
+      {tab === "staff" && <StaffManager staff={staff} hints={hints} startingPoints={startingPoints} />}
+      {tab === "locations" && <LocationManager sites={sites} />}
     </div>
   );
 }
