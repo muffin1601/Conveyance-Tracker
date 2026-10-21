@@ -1,11 +1,12 @@
 import { Suspense } from "react";
+import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { getActiveEmployees, getActiveSites, getHeadOffice } from "@/lib/masterData";
 import { getActiveEmployeeId } from "@/app/actions/session";
 import { getLanguage } from "@/app/actions/language";
 import { t } from "@/lib/i18n";
-import { todayKey, inr, km, fmtTime } from "@/lib/utils";
+import { todayKey, monthKey, inr, km, fmtTime, cn } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
 import { DayMap, type DayStop } from "@/components/DayMap";
@@ -82,29 +83,45 @@ async function VisitEntry() {
 }
 
 /**
- * Today's activity for the person using this device only.
+ * Today or current-month activity for the person using this device only.
  *
  * Previously this listed every employee's trips and expenses to anyone who
  * opened the page. It is now scoped to whoever is selected in the form above
- * (remembered in a cookie), so you only ever see your own day. Managers see
+ * (remembered in a cookie), so you only ever see your own entries. Managers see
  * everybody through the PIN-gated Admin tab, which is unchanged.
  */
-async function TodaySummary() {
+type SummaryPeriod = "today" | "month";
+
+function workDateLabel(workDate: string, lang: "en" | "hi"): string {
+  const [year, month, day] = workDate.split("-").map(Number);
+  return new Intl.DateTimeFormat(lang === "hi" ? "hi-IN" : "en-IN", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
+}
+
+async function PersonalSummary({ period }: { period: SummaryPeriod }) {
   const workDate = todayKey();
+  const currentMonth = monthKey();
   const [employeeId, lang] = await Promise.all([getActiveEmployeeId(), getLanguage()]);
 
   // No name chosen yet — show nothing rather than everyone's data.
   if (!employeeId) {
     return (
-      <Empty>{t(lang, "selectNameToSeeTrips")}</Empty>
+      <Empty>{t(lang, period === "month" ? "selectNameToSeeMonth" : "selectNameToSeeTrips")}</Empty>
     );
   }
 
-  const scope = { workDate, employeeId };
+  const scope = {
+    employeeId,
+    workDate: period === "month" ? { startsWith: currentMonth } : workDate,
+  };
   const [journeys, miscExpenses] = await Promise.all([
     prisma.journey.findMany({
       where: scope,
-      orderBy: { sequence: "asc" },
+      orderBy: [{ workDate: "desc" }, { sequence: "asc" }],
       include: {
         employee: { select: { id: true, name: true } },
         fromSite: { select: { name: true } },
@@ -116,6 +133,7 @@ async function TodaySummary() {
     }),
     prisma.miscellaneousExpense.findMany({
       where: scope,
+      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
       include: { employee: { select: { id: true, name: true } } },
     }),
   ]);
@@ -146,6 +164,7 @@ async function TodaySummary() {
   interface Group {
     employeeId: string;
     name: string;
+    workDate: string;
     legs: typeof journeys;
     misc: typeof miscExpenses;
     convTotal: number;
@@ -154,39 +173,55 @@ async function TodaySummary() {
     lastAt: Date;
   }
   const byEmployee = new Map<string, Group>();
-  const ensure = (id: string, name: string, at: Date): Group => {
-    let g = byEmployee.get(id);
+  const ensure = (id: string, name: string, date: string, at: Date): Group => {
+    const key = `${id}:${date}`;
+    let g = byEmployee.get(key);
     if (!g) {
-      g = { employeeId: id, name, legs: [], misc: [], convTotal: 0, miscTotal: 0, totalKm: 0, lastAt: at };
-      byEmployee.set(id, g);
+      g = { employeeId: id, name, workDate: date, legs: [], misc: [], convTotal: 0, miscTotal: 0, totalKm: 0, lastAt: at };
+      byEmployee.set(key, g);
     }
     if (at > g.lastAt) g.lastAt = at;
     return g;
   };
   for (const j of journeys) {
-    const g = ensure(j.employee.id, j.employee.name, j.createdAt);
+    const g = ensure(j.employee.id, j.employee.name, j.workDate, j.createdAt);
     g.legs.push(j);
     g.totalKm += j.distanceKm;
     g.convTotal += j.amount;
   }
   for (const e of miscExpenses) {
-    const g = ensure(e.employee.id, e.employee.name, e.createdAt);
+    const g = ensure(e.employee.id, e.employee.name, e.workDate, e.createdAt);
     g.misc.push(e);
     g.miscTotal += e.amount;
   }
-  const timelines = [...byEmployee.values()].sort((a, b) => +b.lastAt - +a.lastAt);
+  const timelines = [...byEmployee.values()].sort((a, b) =>
+    b.workDate.localeCompare(a.workDate) || +b.lastAt - +a.lastAt,
+  );
 
   const miscCatLabel = (e: (typeof miscExpenses)[number]) =>
     e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
 
-  if (timelines.length === 0) return <Empty>{t(lang, "noActivityToday")}</Empty>;
+  if (timelines.length === 0) {
+    return <Empty>{t(lang, period === "month" ? "noActivityThisMonth" : "noActivityToday")}</Empty>;
+  }
+
+  const periodKm = timelines.reduce((sum, day) => sum + day.totalKm, 0);
+  const periodTotal = timelines.reduce((sum, day) => sum + day.convTotal + day.miscTotal, 0);
 
   return (
     <div className="space-y-5">
+      {period === "month" && (
+        <div className="flex items-center justify-between rounded-lg bg-bg px-3 py-2 text-sm">
+          <span className="font-medium">{t(lang, "monthTotal")}</span>
+          <span className="font-semibold tabular-nums">{km(periodKm)} · {inr(periodTotal)}</span>
+        </div>
+      )}
       {timelines.map((day) => (
-        <div key={day.employeeId} className="rounded-lg border p-3">
+        <div key={`${day.employeeId}:${day.workDate}`} className="rounded-lg border p-3">
           <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-sm">{day.name}</span>
+            <span className="font-medium text-sm">
+              {period === "month" ? workDateLabel(day.workDate, lang) : day.name}
+            </span>
             <span className="text-xs text-muted tabular-nums">{fmtTime(day.lastAt)}</span>
           </div>
 
@@ -196,7 +231,10 @@ async function TodaySummary() {
               {/* The shape of the day, above the list. Reading five rows of
                   "Govindpuri, Delhi" tells you much less than one glance at
                   where the trips actually went. */}
-              <DayMap label={t(lang, "dayMapLabel")} stops={dayStops(day.legs)} />
+              <DayMap
+                label={t(lang, period === "month" ? "datedDayMapLabel" : "dayMapLabel")}
+                stops={dayStops(day.legs)}
+              />
               <ol className="space-y-1.5">
                 {day.legs.map((j, i) => (
                   <li key={j.id} className="text-sm">
@@ -291,16 +329,42 @@ async function TodaySummary() {
   );
 }
 
-export default async function CheckinPage() {
+export default async function CheckinPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ summary?: string }>;
+}) {
+  const sp = await searchParams;
+  const period: SummaryPeriod = sp.summary === "month" ? "month" : "today";
   const lang = await getLanguage();
   return (
     <div className="space-y-6">
       <VisitEntry />
 
       <Card>
-        <SectionTitle>{t(lang, "todaysSummary")}</SectionTitle>
+        <div id="my-entries" className="flex flex-wrap items-center justify-between gap-3 mb-3 scroll-mt-4">
+          <div className="[&>h2]:mb-0">
+            <SectionTitle>{t(lang, period === "month" ? "thisMonthsEntries" : "todaysSummary")}</SectionTitle>
+          </div>
+          <div className="inline-flex rounded-lg border bg-bg p-1 text-xs font-medium" aria-label={t(lang, "summaryPeriod")}>
+            <Link
+              href="/app#my-entries"
+              aria-current={period === "today" ? "page" : undefined}
+              className={cn("rounded-md px-3 py-1.5", period === "today" ? "bg-card text-fg shadow-sm" : "text-muted hover:text-fg")}
+            >
+              {t(lang, "todayOption")}
+            </Link>
+            <Link
+              href="/app?summary=month#my-entries"
+              aria-current={period === "month" ? "page" : undefined}
+              className={cn("rounded-md px-3 py-1.5", period === "month" ? "bg-card text-fg shadow-sm" : "text-muted hover:text-fg")}
+            >
+              {t(lang, "thisMonthOption")}
+            </Link>
+          </div>
+        </div>
         <Suspense fallback={<SummarySkeleton />}>
-          <TodaySummary />
+          <PersonalSummary period={period} />
         </Suspense>
       </Card>
     </div>

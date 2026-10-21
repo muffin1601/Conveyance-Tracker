@@ -45,6 +45,10 @@ const DICT = {
     hi: "आने-जाने के अलावा के खर्चे यहाँ दर्ज करें — parking, toll, खाना, वगैरह। ये conveyance से अलग रखे जाते हैं, पर आपकी day summary और reports में दिख जाते हैं।",
   },
   todaysSummary: { en: "Today's Summary", hi: "आज का हिसाब" },
+  thisMonthsEntries: { en: "My Entries This Month", hi: "इस महीने की मेरी एंट्रियाँ" },
+  summaryPeriod: { en: "Choose summary period", hi: "हिसाब की अवधि चुनें" },
+  todayOption: { en: "Today", hi: "आज" },
+  thisMonthOption: { en: "This month", hi: "इस महीने" },
 
   // ── Employee picker ─────────────────────────────────────────────
   yourName: { en: "Your Name", hi: "आपका नाम" },
@@ -271,11 +275,15 @@ const DICT = {
 
   // ── Today's Summary (page.tsx) ───────────────────────────────────
   selectNameToSeeTrips: { en: "Select your name above to see your trips and expenses for today.", hi: "आज की trips और खर्चे देखने के लिए ऊपर अपना नाम चुनें।" },
+  selectNameToSeeMonth: { en: "Select your name above to see your trips and expenses for this month.", hi: "इस महीने की trips और खर्चे देखने के लिए ऊपर अपना नाम चुनें।" },
   noActivityToday: { en: "No activity logged today yet.", hi: "आज अभी तक कुछ दर्ज नहीं हुआ।" },
+  noActivityThisMonth: { en: "No activity logged this month yet.", hi: "इस महीने अभी तक कुछ दर्ज नहीं हुआ।" },
+  monthTotal: { en: "Month total", hi: "महीने का कुल" },
   conveyanceLabel: { en: "Conveyance", hi: "Conveyance" },
   /** Suffix on the timeline's cumulative distance: "12.4 km so far". */
   runningTotal: { en: "so far", hi: "अब तक" },
   dayMapLabel: { en: "Map of today's stops, in order", hi: "आज की जगहों का नक्शा, क्रम में" },
+  datedDayMapLabel: { en: "Map of this day's stops, in order", hi: "इस दिन की जगहों का नक्शा, क्रम में" },
   // Asked when the starting point sits far from where the last logged trip
   // ended — nearly always a restart tapped by accident.
   originLooksWrong: {
