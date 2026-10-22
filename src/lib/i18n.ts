@@ -289,8 +289,8 @@ const DICT = {
   noActivityThisMonth: { en: "No activity logged this month yet.", hi: "इस महीने अभी तक कुछ दर्ज नहीं हुआ।" },
   monthTotal: { en: "Month total", hi: "महीने का कुल" },
   conveyanceLabel: { en: "Conveyance", hi: "Conveyance" },
-  /** Suffix on the timeline's cumulative distance: "12.4 km so far". */
-  runningTotal: { en: "so far", hi: "अब तक" },
+  /** The cumulative distance for the selected employee's current day. */
+  runningTotal: { en: "Total today", hi: "आज का कुल" },
   dayMapLabel: { en: "Map of today's stops, in order", hi: "आज की जगहों का नक्शा, क्रम में" },
   datedDayMapLabel: { en: "Map of this day's stops, in order", hi: "इस दिन की जगहों का नक्शा, क्रम में" },
   // Asked when the starting point sits far from where the last logged trip
