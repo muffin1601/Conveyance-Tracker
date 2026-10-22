@@ -49,11 +49,14 @@ export default async function AdminPage({
   /** Query string shared by every export link, so downloads match the view. */
   const exportQuery = `period=${period}${employeeId ? `&employee=${employeeId}` : ""}`;
 
-  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations, corrections] =
+  const showStats = tab === "overview" || tab === "entries" || tab === "expenses";
+  // Fetch full records only for the visible workspace tab. Counts and totals
+  // stay available for badges, but navigating no longer downloads every table.
+  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations, customLocationCount, corrections, correctionCount] =
     await Promise.all([
-      prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }),
-      prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }),
-      prisma.journey.findMany({
+      showStats ? prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }) : Promise.resolve(0),
+      showStats ? prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }) : Promise.resolve(0),
+      tab === "entries" ? prisma.journey.findMany({
         where: periodFilter,
         orderBy: { createdAt: "desc" },
         skip: (requestedPage - 1) * size,
@@ -63,7 +66,7 @@ export default async function AdminPage({
           toSite: { select: { name: true, city: true, address: true } },
           toCustomLocation: { select: { locationName: true, address: true } },
         },
-      }),
+      }) : Promise.resolve([]),
       // Totals are aggregated in the database over the WHOLE period. Summing
       // the capped 300-row page understated every figure once a month passed
       // 300 entries — the headline numbers were silently wrong.
@@ -72,25 +75,27 @@ export default async function AdminPage({
         _sum: { amount: true, distanceKm: true },
         _count: true,
       }),
-      prisma.miscellaneousExpense.findMany({
+      tab === "expenses" ? prisma.miscellaneousExpense.findMany({
         where: periodFilter,
         orderBy: { createdAt: "desc" },
         skip: (requestedPage - 1) * size,
         take: size,
         include: { employee: { select: { name: true } } },
-      }),
+      }) : Promise.resolve([]),
       prisma.miscellaneousExpense.aggregate({
         where: periodFilter,
         _sum: { amount: true },
         _count: true,
       }),
-      prisma.userCustomLocation.findMany({
+      tab === "locations" ? prisma.userCustomLocation.findMany({
         where: { status: "ACTIVE" },
         orderBy: [{ isGlobal: "asc" }, { createdAt: "desc" }],
         take: 200,
         include: { employee: { select: { name: true } } },
-      }),
-      prisma.distanceCorrection.findMany({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } }, orderBy: { submittedAt: "desc" }, include: { employee: { select: { name: true } }, journey: { select: { workDate: true, fromName: true, toName: true } } } }),
+      }) : Promise.resolve([]),
+      prisma.userCustomLocation.count({ where: { status: "ACTIVE" } }),
+      tab === "corrections" ? prisma.distanceCorrection.findMany({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } }, orderBy: { submittedAt: "desc" }, take: 200, include: { employee: { select: { name: true } }, journey: { select: { workDate: true, fromName: true, toName: true } } } }) : Promise.resolve([]),
+      prisma.distanceCorrection.count({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } } }),
     ]);
 
   const convAmount = journeyStats._sum.amount ?? 0;
@@ -129,8 +134,8 @@ export default async function AdminPage({
           { id: "overview", label: "Overview" },
           { id: "entries", label: "Conveyance", count: journeyTotalCount },
           { id: "expenses", label: "Expenses", count: miscTotalCount },
-          { id: "corrections", label: "Corrections", count: corrections.length },
-          { id: "locations", label: "Custom locations", count: customLocations.length },
+          { id: "corrections", label: "Corrections", count: correctionCount },
+          { id: "locations", label: "Custom locations", count: customLocationCount },
           { id: "exports", label: "Reports & exports" },
         ]}
       />

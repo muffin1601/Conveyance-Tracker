@@ -1,7 +1,8 @@
 "use client";
 
-import Link from "next/link";
+import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
+import { Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { t, type Lang, type DictKey } from "@/lib/i18n";
 import { LanguageToggle } from "./LanguageToggle";
@@ -11,6 +12,11 @@ const TABS: { href: string; key: DictKey }[] = [
   { href: "/app/admin", key: "navAdmin" },
   { href: "/app/settings", key: "navSettings" },
 ];
+
+function LinkProgress() {
+  const { pending } = useLinkStatus();
+  return pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Loading" /> : null;
+}
 
 export function TopNav({ lang }: { lang: Lang }) {
   const pathname = usePathname();
@@ -27,13 +33,14 @@ export function TopNav({ lang }: { lang: Lang }) {
                 key={tab.href}
                 href={tab.href}
                 className={cn(
-                  "shrink-0 whitespace-nowrap px-3 py-3 text-sm font-medium border-b-2 -mb-px transition sm:px-4",
+                  "inline-flex shrink-0 items-center gap-1.5 whitespace-nowrap px-3 py-3 text-sm font-medium border-b-2 -mb-px transition sm:px-4",
                   active
                     ? "border-brand text-fg"
                     : "border-transparent text-muted hover:text-fg",
                 )}
               >
                 {t(lang, tab.key)}
+                <LinkProgress />
               </Link>
             );
           })}

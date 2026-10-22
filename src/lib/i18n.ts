@@ -49,12 +49,21 @@ const DICT = {
   summaryPeriod: { en: "Choose summary period", hi: "हिसाब की अवधि चुनें" },
   todayOption: { en: "Today", hi: "आज" },
   thisMonthOption: { en: "This month", hi: "इस महीने" },
+  myMonthlySummary: { en: "My Monthly Summary", hi: "मेरा मासिक हिसाब" },
+  currentMonthLabel: { en: "Current month", hi: "चालू महीना" },
+  selectNameToSeeMonthlySummary: {
+    en: "Select your name above to see your monthly totals.",
+    hi: "अपना मासिक हिसाब देखने के लिए ऊपर अपना नाम चुनें।",
+  },
+  conveyanceAmount: { en: "Conveyance", hi: "यात्रा राशि" },
 
   // ── Employee picker ─────────────────────────────────────────────
   yourName: { en: "Your Name", hi: "आपका नाम" },
   selectYourName: { en: "— Select your name —", hi: "— अपना नाम चुनें —" },
   searchByName: { en: "Search by name, role or department…", hi: "नाम, role या department से खोजें…" },
   noEmployeeMatch: { en: "No employee matches that search.", hi: "इस खोज से कोई employee नहीं मिला।" },
+  loadingProfile: { en: "Loading your details…", hi: "आपकी जानकारी लोड हो रही है…" },
+  profileLoadFailed: { en: "Could not load your details. Please try again.", hi: "आपकी जानकारी लोड नहीं हुई। फिर कोशिश करें।" },
 
   // ── Trip header ─────────────────────────────────────────────────
   trip: { en: "Trip", hi: "Trip" },

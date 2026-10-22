@@ -7,7 +7,7 @@ import { memo } from "@/lib/cache";
 import { computeDistance, haversineMeters } from "@/lib/geo";
 import { isValidCoord } from "@/lib/geocode";
 import { checkGpsFix, resolveGeofenceRadius, type GpsCheck } from "@/lib/gps";
-import { legFromName, legToAddress, legToName } from "@/lib/journeyEndpoint";
+import { legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { attempt, ok, fail, UserError, type ActionResult } from "@/lib/result";
 import { getSettings } from "@/lib/settings";
 import { isSettingsUnlocked } from "./settings";
@@ -853,31 +853,13 @@ export interface JourneyState {
   canUndoReset: boolean;
   totalKm: number;
   totalAmount: number;
-  /** Today's legs, oldest first — the trip timeline. */
-  legs: {
-    id: string;
-    sequence: number;
-    fromName: string;
-    toName: string;
-    /** The destination's street address, for the timeline tooltip. */
-    toAddress: string | null;
-    /** The leg's destination — for a one-tap Navigate link on the timeline. */
-    toLat: number | null;
-    toLng: number | null;
-    distanceKm: number;
-    amount: number;
-    correction: { id: string; status: string; submittedDistanceKm: number; finalDistanceKm: number | null } | null;
-    mode: string;
-    /** False for legs that were superseded by a "Reset Journey". */
-    chained: boolean;
-    at: Date;
-  }[];
 }
 
 /**
  * Everything the visit screen needs about today's journey, in one round-trip:
  * the next trip number, its (auto-resolved) starting point, the running
- * totals, and the timeline of trips already logged.
+ * totals. Individual trip records are intentionally not returned to the
+ * employee client.
  */
 export async function getJourneyState(employeeId: string): Promise<JourneyState | null> {
   if (!employeeId) return null;
@@ -889,13 +871,10 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
       where: { employeeId, workDate },
       orderBy: { sequence: "asc" },
       select: {
-        id: true, sequence: true, fromName: true, toName: true, toAddress: true,
-        distanceKm: true, amount: true, vehicleType: true, createdAt: true,
+        sequence: true, toName: true, toAddress: true,
+        distanceKm: true, amount: true,
         toLat: true, toLng: true,
-        distanceCorrection: { select: { id: true, status: true, submittedDistanceKm: true, finalDistanceKm: true } },
-        fromSite: { select: { name: true, latitude: true, longitude: true } },
         toSite: { select: { name: true, latitude: true, longitude: true, address: true } },
-        fromCustomLocation: { select: { locationName: true } },
         toCustomLocation: { select: { locationName: true, address: true } },
       },
     }),
@@ -921,21 +900,6 @@ export async function getJourneyState(employeeId: string): Promise<JourneyState 
     canUndoReset: Boolean(reset && last && last.sequence <= reset.afterSequence),
     totalKm: legs.reduce((s, l) => s + l.distanceKm, 0),
     totalAmount: legs.reduce((s, l) => s + l.amount, 0),
-    legs: legs.map((l) => ({
-      id: l.id,
-      sequence: l.sequence,
-      fromName: legFromName(l),
-      toName: legToName(l),
-      toAddress: legToAddress(l),
-      toLat: l.toLat ?? l.toSite?.latitude ?? null,
-      toLng: l.toLng ?? l.toSite?.longitude ?? null,
-      distanceKm: l.distanceKm,
-      amount: l.amount,
-      correction: l.distanceCorrection,
-      mode: l.vehicleType,
-      chained: !reset || l.sequence > reset.afterSequence,
-      at: l.createdAt,
-    })),
   };
 }
 

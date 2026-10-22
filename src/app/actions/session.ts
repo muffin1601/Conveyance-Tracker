@@ -28,11 +28,11 @@ export async function setActiveEmployee(employeeId: string): Promise<{ ok: boole
 
   // Only accept an id that is a real, active employee, so a stale or hand-set
   // cookie can never scope the page to something that does not exist.
-  const employee = await prisma.employee.findUnique({
-    where: { id: employeeId },
-    select: { id: true, status: true, deletedAt: true },
+  const updated = await prisma.employee.updateMany({
+    where: { id: employeeId, status: "ACTIVE", deletedAt: null },
+    data: { lastLoginAt: new Date() },
   });
-  if (!employee || employee.deletedAt || employee.status !== "ACTIVE") {
+  if (updated.count !== 1) {
     jar.delete(EMP_COOKIE);
     return { ok: false };
   }
@@ -41,12 +41,7 @@ export async function setActiveEmployee(employeeId: string): Promise<{ ok: boole
   // name IS signing in. Recorded in the database (not just the cookie) so every
   // location logged afterwards can carry the login time into the reports, and
   // so it survives a cleared cookie or a different device.
-  await prisma.employee.update({
-    where: { id: employee.id },
-    data: { lastLoginAt: new Date() },
-  });
-
-  jar.set(EMP_COOKIE, employee.id, {
+  jar.set(EMP_COOKIE, employeeId, {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",

@@ -21,9 +21,15 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const validTabs = ["general", "rates", "security", "staff", "locations", "history"] as const;
   const tab = validTabs.includes(sp.tab as typeof validTabs[number]) ? sp.tab as typeof validTabs[number] : "general";
 
-  const [settings, staff, sites, startingPoints, correctionHistory] = await Promise.all([
+  // Load only the active tab's records. Previously every click downloaded the
+  // full staff list, site list, and correction history even though five of the
+  // six tabs immediately hid most of that data.
+  const [settings, staffCount, siteCount, historyCount, staff, sites, startingPoints, correctionHistory] = await Promise.all([
     getSettings(),
-    prisma.employee.findMany({
+    prisma.employee.count({ where: { deletedAt: null } }),
+    prisma.site.count({ where: { deletedAt: null } }),
+    prisma.distanceCorrection.count({ where: { status: { in: ["APPROVED", "REJECTED"] } } }),
+    tab === "staff" ? prisma.employee.findMany({
       where: { deletedAt: null },
       orderBy: [{ status: "asc" }, { name: "asc" }],
       select: {
@@ -31,17 +37,17 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         designation: true, department: true, vehicleType: true, phone: true, status: true,
         defaultOriginSiteId: true,
       },
-    }),
-    prisma.site.findMany({
+    }) : Promise.resolve([]),
+    tab === "locations" ? prisma.site.findMany({
       where: { deletedAt: null },
       orderBy: [{ isOffice: "desc" }, { status: "asc" }, { name: "asc" }],
       select: {
         id: true, code: true, name: true, address: true, landmark: true,
         latitude: true, longitude: true, city: true, status: true, isOffice: true,
       },
-    }),
-    getStartingPointSites(),
-    prisma.distanceCorrection.findMany({
+    }) : Promise.resolve([]),
+    tab === "staff" ? getStartingPointSites() : Promise.resolve([]),
+    tab === "history" ? prisma.distanceCorrection.findMany({
       where: { status: { in: ["APPROVED", "REJECTED"] } },
       orderBy: [{ reviewedAt: "desc" }, { submittedAt: "desc" }],
       select: {
@@ -56,7 +62,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         employee: { select: { name: true } },
         journey: { select: { workDate: true, fromName: true, toName: true } },
       },
-    }),
+    }) : Promise.resolve([]),
   ]);
 
   // Offer the values already in use as suggestions, so new entries stay
@@ -96,9 +102,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         { id: "general", label: "General" },
         { id: "rates", label: "Conveyance rates" },
         { id: "security", label: "Security" },
-        { id: "staff", label: "Staff", count: staff.length },
-        { id: "locations", label: "Locations", count: sites.length },
-        { id: "history", label: "Correction history", count: correctionHistory.length },
+        { id: "staff", label: "Staff", count: staffCount },
+        { id: "locations", label: "Locations", count: siteCount },
+        { id: "history", label: "Correction history", count: historyCount },
       ]} />
 
       {(tab === "general" || tab === "rates" || tab === "security") && <SettingsForm settings={settings} section={tab as "general" | "rates" | "security"} />}

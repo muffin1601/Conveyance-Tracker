@@ -5,7 +5,7 @@ import {
 } from "react";
 import {
   Loader2, Check, ArrowDown, MapPin, Bike, Car, TrainFront,
-  LocateFixed, X, Save, AlertTriangle, RotateCcw, Undo2, Flag, History, CloudOff,
+  LocateFixed, X, Save, AlertTriangle, RotateCcw, Undo2, CloudOff,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -28,7 +28,6 @@ import type { TravelMode } from "@/lib/travel";
 import { isRoadDistance } from "@/lib/routing/types";
 import { cn, inr, km } from "@/lib/utils";
 import { errorMessage } from "@/lib/errors";
-import { DistanceCorrection } from "./DistanceCorrection";
 import { t, type Lang, type DictKey } from "@/lib/i18n";
 
 interface Employee {
@@ -116,6 +115,7 @@ export function CheckinForm({
   /** The estimate is unavailable because there is no connection — not an error. */
   const [previewOffline, setPreviewOffline] = useState(false);
   const [pending, start] = useTransition();
+  const [switchingEmployee, startEmployeeSwitch] = useTransition();
   const [resetting, startReset] = useTransition();
   const [panel, setPanel] = useState<"none" | "gps">("none");
   /**
@@ -260,7 +260,15 @@ export function CheckinForm({
     setJourney(null);
     // Persist who this device belongs to, then refresh so Today's Summary
     // re-renders scoped to this employee instead of showing everyone.
-    void setActiveEmployee(id).then(() => router.refresh()).catch(() => {});
+    startEmployeeSwitch(async () => {
+      try {
+        const result = await setActiveEmployee(id);
+        if (result.ok) router.refresh();
+        else setMsg({ ok: false, text: t(lang, "profileLoadFailed") });
+      } catch {
+        setMsg({ ok: false, text: t(lang, "profileLoadFailed") });
+      }
+    });
     setDest(null);
     setPreview(null);
     setPreviewError(null);
@@ -271,7 +279,7 @@ export function CheckinForm({
     setManualKm("");
     setFare("");
     setVerified(null);
-  }, [router]);
+  }, [lang, router]);
 
   const destForApi = useCallback((d: Dest) => {
     if (d.kind === "SITE") return { kind: "SITE" as const, siteId: d.siteId };
@@ -618,7 +626,13 @@ export function CheckinForm({
           searchPlaceholder={t(lang, "searchByName")}
           emptyMessage={t(lang, "noEmployeeMatch")}
           invalid={fieldError === "employee"}
+          disabled={switchingEmployee}
         />
+        {switchingEmployee && (
+          <p className="mt-1.5 flex items-center gap-1.5 text-xs text-muted" role="status">
+            <Loader2 className="h-3.5 w-3.5 animate-spin" /> {t(lang, "loadingProfile")}
+          </p>
+        )}
       </div>
 
       {employeeId && (
@@ -1007,43 +1021,6 @@ export function CheckinForm({
       )}
 
       {/* ── Today's trip timeline ───────────────────────────────────── */}
-      {employeeId && journey && journey.legs.length > 0 && (
-        <div className="rounded-lg border p-3">
-          <div className="mb-2 flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-muted">
-            <History className="h-3.5 w-3.5" /> {t(lang, "recentTripsToday")}
-          </div>
-          <ol className="space-y-2">
-            {[...journey.legs].reverse().map((l) => (
-              <li key={l.id} className="text-sm">
-                <div className="flex items-start gap-2.5">
-                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand/10 text-[11px] font-semibold tabular-nums text-brand">
-                  {l.sequence + 1}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">
-                    {l.fromName} <span className="text-muted">→</span> {l.toName}
-                  </span>
-                  {!l.chained && (
-                    <span className="text-xs text-muted">{t(lang, "journeyRestarted")}</span>
-                  )}
-                </span>
-                <span className="flex shrink-0 items-center gap-1 pl-2">
-                  <span className="text-right tabular-nums">{km(l.distanceKm)} · {inr(l.amount)}</span>
-                  <NavigateButton lat={l.toLat} lng={l.toLng} compact />
-                </span>
-                </div>
-                <div className="ml-7 mt-1"><DistanceCorrection journeyId={l.id} recordedKm={l.distanceKm} correction={l.correction} lang={lang} /></div>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold tabular-nums">
-            <span className="flex items-center gap-1.5">
-              <Flag className="h-3.5 w-3.5 text-muted" /> {t(lang, "journeyTotal")}
-            </span>
-            <span>{km(journey.totalKm)} · {inr(journey.totalAmount)}</span>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

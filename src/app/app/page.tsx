@@ -1,44 +1,20 @@
 import { Suspense } from "react";
-import Link from "next/link";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings";
 import { getActiveEmployees, getActiveSites, getHeadOffice } from "@/lib/masterData";
 import { getActiveEmployeeId } from "@/app/actions/session";
 import { getLanguage } from "@/app/actions/language";
 import { t } from "@/lib/i18n";
-import { todayKey, monthKey, inr, km, fmtTime, cn } from "@/lib/utils";
-import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
-import { legFromName, legToName } from "@/lib/journeyEndpoint";
-import { DayMap, type DayStop } from "@/components/DayMap";
+import { monthKey, inr, km } from "@/lib/utils";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
-import { NavigateButton } from "@/components/NavigateButton";
-import { ArrowRight } from "lucide-react";
 import { CheckinForm } from "./CheckinForm";
 import { MiscExpenses } from "./MiscExpenses";
-import { JourneyBill } from "./JourneyBill";
-import { DistanceCorrection } from "./DistanceCorrection";
 
-/**
- * Today's summary must reflect the live database, not a build-time snapshot.
- * Without this the route prerenders statically (every data source it touches
- * is either cached or a plain query), which would freeze `workDate` at build
- * time and show yesterday's activity after midnight. The shell stays fast
- * regardless: `VisitEntry` reads only cached master data, so it streams
- * immediately while the summary resolves behind its Suspense boundary.
- */
+/** Keep dates and totals live across midnight and month boundaries. */
 export const dynamic = "force-dynamic";
 
-function modeLabel(m: string): string {
-  return m === "BUSMETRO" ? "Bus/Metro" : m === "CAR" ? "Car" : m === "BIKE" ? "Bike" : m;
-}
-
-/**
- * The interactive half of the page. Only depends on cached master data, so it
- * renders as soon as the request arrives instead of waiting for the day's
- * activity query — that wait was the bulk of the perceived "the app is slow"
- * delay, and it grows with every visit ever logged.
- */
+/** The entry forms render while the employee's monthly summary streams. */
 async function VisitEntry() {
   const [employees, sites, office, settings, activeEmployeeId, lang] = await Promise.all([
     getActiveEmployees(),
@@ -48,10 +24,10 @@ async function VisitEntry() {
     getActiveEmployeeId(),
     getLanguage(),
   ]);
-  // Only pre-select someone who is still on the active roster.
   const initialEmployeeId =
-    activeEmployeeId && employees.some((e) => e.id === activeEmployeeId) ? activeEmployeeId : "";
-  const uploadsEnabled = isUploadConfigured();
+    activeEmployeeId && employees.some((employee) => employee.id === activeEmployeeId)
+      ? activeEmployeeId
+      : "";
 
   return (
     <>
@@ -67,304 +43,159 @@ async function VisitEntry() {
           sites={sites}
           officeName={office?.name ?? "Head Office"}
           companyRadius={settings.geofenceRadius}
-          rates={{ BIKE: settings.rates.BIKE, CAR: settings.rates.CAR, BUSMETRO: settings.rates.busMetroPerKm }}
+          rates={{
+            BIKE: settings.rates.BIKE,
+            CAR: settings.rates.CAR,
+            BUSMETRO: settings.rates.busMetroPerKm,
+          }}
         />
       </Card>
 
       <Card>
         <SectionTitle>{t(lang, "miscExpensesTitle")}</SectionTitle>
-        <p className="text-xs text-muted -mt-2 mb-4">
-          {t(lang, "miscExpensesIntro")}
-        </p>
-        <MiscExpenses lang={lang} initialEmployeeId={initialEmployeeId} employees={employees} uploadsEnabled={uploadsEnabled} />
+        <p className="text-xs text-muted -mt-2 mb-4">{t(lang, "miscExpensesIntro")}</p>
+        <MiscExpenses
+          lang={lang}
+          initialEmployeeId={initialEmployeeId}
+          employees={employees}
+          uploadsEnabled={isUploadConfigured()}
+        />
       </Card>
     </>
   );
 }
 
-/**
- * Today or current-month activity for the person using this device only.
- *
- * Previously this listed every employee's trips and expenses to anyone who
- * opened the page. It is now scoped to whoever is selected in the form above
- * (remembered in a cookie), so you only ever see your own entries. Managers see
- * everybody through the PIN-gated Admin tab, which is unchanged.
- */
-type SummaryPeriod = "today" | "month";
-
-function workDateLabel(workDate: string, lang: "en" | "hi"): string {
-  const [year, month, day] = workDate.split("-").map(Number);
+function monthLabel(value: string, lang: "en" | "hi"): string {
+  const [year, month] = value.split("-").map(Number);
   return new Intl.DateTimeFormat(lang === "hi" ? "hi-IN" : "en-IN", {
-    day: "numeric",
-    month: "short",
+    month: "long",
     year: "numeric",
     timeZone: "UTC",
-  }).format(new Date(Date.UTC(year, month - 1, day)));
+  }).format(new Date(Date.UTC(year, month - 1, 1)));
 }
 
-async function PersonalSummary({ period }: { period: SummaryPeriod }) {
-  const workDate = todayKey();
+/**
+ * Show only monthly aggregates to employees. Individual routes, dates,
+ * expenses, bills, and correction records remain in the admin area.
+ */
+async function PersonalSummary() {
   const currentMonth = monthKey();
   const [employeeId, lang] = await Promise.all([getActiveEmployeeId(), getLanguage()]);
 
-  // No name chosen yet — show nothing rather than everyone's data.
   if (!employeeId) {
-    return (
-      <Empty>{t(lang, period === "month" ? "selectNameToSeeMonth" : "selectNameToSeeTrips")}</Empty>
-    );
+    return <Empty>{t(lang, "selectNameToSeeMonthlySummary")}</Empty>;
   }
 
-  const scope = {
-    employeeId,
-    workDate: period === "month" ? { startsWith: currentMonth } : workDate,
-  };
-  const [journeys, miscExpenses] = await Promise.all([
-    prisma.journey.findMany({
-      where: scope,
-      orderBy: [{ workDate: "desc" }, { sequence: "asc" }],
-      include: {
-        employee: { select: { id: true, name: true } },
-        fromSite: { select: { name: true } },
-        toSite: { select: { name: true, city: true, latitude: true, longitude: true } },
-        fromCustomLocation: { select: { locationName: true } },
-        toCustomLocation: { select: { locationName: true } },
-        distanceCorrection: { select: { id: true, status: true, submittedDistanceKm: true, finalDistanceKm: true } },
-      },
-    }),
-    prisma.miscellaneousExpense.findMany({
-      where: scope,
-      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
-      include: { employee: { select: { id: true, name: true } } },
-    }),
+  interface MonthTotal {
+    month: string;
+    distanceKm: number;
+    conveyance: number;
+    miscellaneous: number;
+  }
+
+  // Aggregate in Postgres so the page receives one row per month instead of
+  // downloading every trip and expense the employee has ever recorded.
+  const [journeyMonths, expenseMonths] = await Promise.all([
+    prisma.$queryRaw<Array<{ month: string; distanceKm: number; conveyance: number }>>`
+      SELECT LEFT("workDate", 7) AS "month",
+             COALESCE(SUM("distanceKm"), 0)::float8 AS "distanceKm",
+             COALESCE(SUM("amount"), 0)::float8 AS "conveyance"
+      FROM "Journey"
+      WHERE "employeeId" = ${employeeId} AND "workDate" <= ${`${currentMonth}-31`}
+      GROUP BY LEFT("workDate", 7)
+    `,
+    prisma.$queryRaw<Array<{ month: string; miscellaneous: number }>>`
+      SELECT LEFT("workDate", 7) AS "month",
+             COALESCE(SUM("amount"), 0)::float8 AS "miscellaneous"
+      FROM "MiscellaneousExpense"
+      WHERE "employeeId" = ${employeeId} AND "workDate" <= ${`${currentMonth}-31`}
+      GROUP BY LEFT("workDate", 7)
+    `,
   ]);
 
-  const uploadsEnabled = isUploadConfigured();
-
-  /**
-   * The day's stops for the map: the first leg's origin, then every
-   * destination in order. Legs with no coordinates (older rows, or a saved
-   * location that never had any) are skipped rather than guessed at — a stop
-   * drawn in the wrong place is worse than a stop not drawn.
-   */
-  function dayStops(legs: typeof journeys): DayStop[] {
-    const stops: DayStop[] = [];
-    const first = legs[0];
-    if (first?.fromLat != null && first.fromLng != null) {
-      stops.push({ order: 0, name: legFromName(first), latitude: first.fromLat, longitude: first.fromLng });
+  const totals = new Map<string, MonthTotal>();
+  const ensure = (month: string): MonthTotal => {
+    let total = totals.get(month);
+    if (!total) {
+      total = { month, distanceKm: 0, conveyance: 0, miscellaneous: 0 };
+      totals.set(month, total);
     }
-    legs.forEach((l, i) => {
-      const lat = l.toLat ?? l.toSite?.latitude ?? null;
-      const lng = l.toLng ?? l.toSite?.longitude ?? null;
-      if (lat == null || lng == null) return;
-      stops.push({ order: i + 1, name: legToName(l), latitude: lat, longitude: lng });
-    });
-    return stops;
-  }
-
-  interface Group {
-    employeeId: string;
-    name: string;
-    workDate: string;
-    legs: typeof journeys;
-    misc: typeof miscExpenses;
-    convTotal: number;
-    miscTotal: number;
-    totalKm: number;
-    lastAt: Date;
-  }
-  const byEmployee = new Map<string, Group>();
-  const ensure = (id: string, name: string, date: string, at: Date): Group => {
-    const key = `${id}:${date}`;
-    let g = byEmployee.get(key);
-    if (!g) {
-      g = { employeeId: id, name, workDate: date, legs: [], misc: [], convTotal: 0, miscTotal: 0, totalKm: 0, lastAt: at };
-      byEmployee.set(key, g);
-    }
-    if (at > g.lastAt) g.lastAt = at;
-    return g;
+    return total;
   };
-  for (const j of journeys) {
-    const g = ensure(j.employee.id, j.employee.name, j.workDate, j.createdAt);
-    g.legs.push(j);
-    g.totalKm += j.distanceKm;
-    g.convTotal += j.amount;
-  }
-  for (const e of miscExpenses) {
-    const g = ensure(e.employee.id, e.employee.name, e.workDate, e.createdAt);
-    g.misc.push(e);
-    g.miscTotal += e.amount;
-  }
-  const timelines = [...byEmployee.values()].sort((a, b) =>
-    b.workDate.localeCompare(a.workDate) || +b.lastAt - +a.lastAt,
-  );
 
-  const miscCatLabel = (e: (typeof miscExpenses)[number]) =>
-    e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
-
-  if (timelines.length === 0) {
-    return <Empty>{t(lang, period === "month" ? "noActivityThisMonth" : "noActivityToday")}</Empty>;
+  for (const journey of journeyMonths) {
+    const total = ensure(journey.month);
+    total.distanceKm = journey.distanceKm;
+    total.conveyance = journey.conveyance;
+  }
+  for (const expense of expenseMonths) {
+    ensure(expense.month).miscellaneous = expense.miscellaneous;
   }
 
-  const periodKm = timelines.reduce((sum, day) => sum + day.totalKm, 0);
-  const periodTotal = timelines.reduce((sum, day) => sum + day.convTotal + day.miscTotal, 0);
+  // Include empty gaps so the list is a complete month-by-month history from
+  // the employee's first record through the current month.
+  const firstMonth = [...totals.keys()].sort()[0] ?? currentMonth;
+  let cursor = firstMonth;
+  while (cursor <= currentMonth) {
+    ensure(cursor);
+    const [year, month] = cursor.split("-").map(Number);
+    const next = new Date(Date.UTC(year, month, 1));
+    cursor = `${next.getUTCFullYear()}-${String(next.getUTCMonth() + 1).padStart(2, "0")}`;
+  }
+  const months = [...totals.values()].sort((a, b) => b.month.localeCompare(a.month));
 
   return (
-    <div className="space-y-5">
-      {period === "month" && (
-        <div className="flex items-center justify-between rounded-lg bg-bg px-3 py-2 text-sm">
-          <span className="font-medium">{t(lang, "monthTotal")}</span>
-          <span className="font-semibold tabular-nums">{km(periodKm)} · {inr(periodTotal)}</span>
-        </div>
-      )}
-      {timelines.map((day) => (
-        <div key={`${day.employeeId}:${day.workDate}`} className="rounded-lg border p-3">
-          <div className="flex items-center justify-between mb-2">
-            <span className="font-medium text-sm">
-              {period === "month" ? workDateLabel(day.workDate, lang) : day.name}
-            </span>
-            <span className="text-xs text-muted tabular-nums">{fmtTime(day.lastAt)}</span>
+    <div className="space-y-3">
+      {months.map((total) => (
+        <div key={total.month} className="rounded-lg border p-3">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <span className="font-semibold">{monthLabel(total.month, lang)}</span>
+            {total.month === currentMonth && (
+              <span className="badge bg-brand/10 text-brand">{t(lang, "currentMonthLabel")}</span>
+            )}
           </div>
 
-          {day.legs.length > 0 && (
-            <>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1">{t(lang, "conveyanceLabel")}</div>
-              {/* The shape of the day, above the list. Reading five rows of
-                  "Govindpuri, Delhi" tells you much less than one glance at
-                  where the trips actually went. */}
-              <DayMap
-                label={t(lang, period === "month" ? "datedDayMapLabel" : "dayMapLabel")}
-                stops={dayStops(day.legs)}
-              />
-              <ol className="space-y-1.5">
-                {day.legs.map((j, i) => (
-                  <li key={j.id} className="text-sm">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span className="text-[11px] font-semibold tabular-nums text-muted">{i + 1}.</span>
-                        {/* When the trip was logged. Without it the day is a
-                            list of places in no particular time, and an employee
-                            cannot check their own record against their memory. */}
-                        <span className="text-[11px] tabular-nums text-muted shrink-0">{fmtTime(j.createdAt)}</span>
-                        <span className="text-muted truncate">{legFromName(j)}</span>
-                        <ArrowRight className="h-3 w-3 text-muted shrink-0" />
-                        {/* The full address is a tooltip, not a second line:
-                            this timeline is read on a phone and must stay one
-                            trip per row. */}
-                        <span className="truncate" title={j.toAddress ?? undefined}>{legToName(j)}</span>
-                        {j.locationType !== "MASTER" && (
-                          <span className="badge bg-bg text-muted text-[10px] shrink-0">
-                            {LOCATION_TYPE_LABEL[j.locationType as LocationType]}
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1 pl-3">
-                        <span className="text-right tabular-nums">
-                          {km(j.distanceKm)} · {inr(j.amount)}
-                          {j.distanceUpdated && <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>}
-                          <span className="ml-1 text-xs text-muted">{modeLabel(j.vehicleType)}</span>
-                          {/* Running total after this trip — the day adding up
-                              in front of you, so a wrong leg stands out before
-                              it reaches a claim. */}
-                          <span className="block text-[11px] text-muted">
-                            {km(day.legs.slice(0, i + 1).reduce((s, l) => s + l.distanceKm, 0))} {t(lang, "runningTotal")}
-                          </span>
-                        </span>
-                        <NavigateButton lat={j.toLat} lng={j.toLng} compact />
-                      </div>
-                    </div>
-                    {uploadsEnabled && (
-                      <div className="mt-0.5 pl-0.5">
-                        <JourneyBill
-                          journeyId={j.id}
-                          employeeId={day.employeeId}
-                          billPath={j.billPath}
-                          billName={j.billName}
-                          billType={j.billType}
-                          uploadsEnabled={uploadsEnabled}
-                          lang={lang}
-                        />
-                      </div>
-                    )}
-                    <DistanceCorrection
-                      journeyId={j.id}
-                      recordedKm={j.distanceKm}
-                      correction={j.distanceCorrection}
-                      lang={lang}
-                    />
-                  </li>
-                ))}
-              </ol>
-              <div className="flex items-center justify-between mt-1.5 text-sm tabular-nums">
-                <span className="text-muted">{t(lang, "totalConveyanceLabel")}</span>
-                <span className="font-medium">{km(day.totalKm)} · {inr(day.convTotal)}</span>
-              </div>
-            </>
-          )}
+          <dl className="grid grid-cols-3 gap-2 text-center">
+            <div className="rounded-md bg-bg px-2 py-3">
+              <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {t(lang, "distance")}
+              </dt>
+              <dd className="mt-1 font-semibold tabular-nums">{km(total.distanceKm)}</dd>
+            </div>
+            <div className="rounded-md bg-bg px-2 py-3">
+              <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {t(lang, "conveyanceAmount")}
+              </dt>
+              <dd className="mt-1 font-semibold tabular-nums text-brand">
+                {inr(total.conveyance)}
+              </dd>
+            </div>
+            <div className="rounded-md bg-bg px-2 py-3">
+              <dt className="text-[11px] font-semibold uppercase tracking-wider text-muted">
+                {t(lang, "miscellaneousLabel")}
+              </dt>
+              <dd className="mt-1 font-semibold tabular-nums">{inr(total.miscellaneous)}</dd>
+            </div>
+          </dl>
 
-          {day.misc.length > 0 && (
-            <>
-              <div className="text-[11px] font-semibold uppercase tracking-wider text-muted mb-1 mt-3">{t(lang, "miscellaneousLabel")}</div>
-              <ul className="space-y-1.5">
-                {day.misc.map((e) => (
-                  <li key={e.id} className="flex items-center justify-between text-sm">
-                    <span className="truncate">{miscCatLabel(e)}{e.description ? ` · ${e.description}` : ""}</span>
-                    <span className="tabular-nums pl-3 shrink-0">{inr(e.amount)}</span>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex items-center justify-between mt-1.5 text-sm tabular-nums">
-                <span className="text-muted">{t(lang, "totalMiscLabel")}</span>
-                <span className="font-medium">{inr(day.miscTotal)}</span>
-              </div>
-            </>
-          )}
-
-          <div className="flex items-center justify-between mt-2 pt-2 border-t text-sm font-semibold tabular-nums">
-            <span>{t(lang, "grandTotal")}</span>
-            <span>{inr(day.convTotal + day.miscTotal)}</span>
-          </div>
         </div>
       ))}
     </div>
   );
 }
 
-export default async function CheckinPage({
-  searchParams,
-}: {
-  searchParams: Promise<{ summary?: string }>;
-}) {
-  const sp = await searchParams;
-  const period: SummaryPeriod = sp.summary === "month" ? "month" : "today";
+export default async function CheckinPage() {
   const lang = await getLanguage();
   return (
     <div className="space-y-6">
       <VisitEntry />
 
       <Card>
-        <div id="my-entries" className="flex flex-wrap items-center justify-between gap-3 mb-3 scroll-mt-4">
-          <div className="[&>h2]:mb-0">
-            <SectionTitle>{t(lang, period === "month" ? "thisMonthsEntries" : "todaysSummary")}</SectionTitle>
-          </div>
-          <div className="inline-flex rounded-lg border bg-bg p-1 text-xs font-medium" aria-label={t(lang, "summaryPeriod")}>
-            <Link
-              href="/app#my-entries"
-              aria-current={period === "today" ? "page" : undefined}
-              className={cn("rounded-md px-3 py-1.5", period === "today" ? "bg-card text-fg shadow-sm" : "text-muted hover:text-fg")}
-            >
-              {t(lang, "todayOption")}
-            </Link>
-            <Link
-              href="/app?summary=month#my-entries"
-              aria-current={period === "month" ? "page" : undefined}
-              className={cn("rounded-md px-3 py-1.5", period === "month" ? "bg-card text-fg shadow-sm" : "text-muted hover:text-fg")}
-            >
-              {t(lang, "thisMonthOption")}
-            </Link>
-          </div>
+        <div id="my-entries" className="mb-3 scroll-mt-4 [&>h2]:mb-0">
+          <SectionTitle>{t(lang, "myMonthlySummary")}</SectionTitle>
         </div>
         <Suspense fallback={<SummarySkeleton />}>
-          <PersonalSummary period={period} />
+          <PersonalSummary />
         </Suspense>
       </Card>
     </div>
