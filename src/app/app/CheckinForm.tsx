@@ -478,6 +478,9 @@ export function CheckinForm({
       }
       queue.refresh();
       await refreshJourney(employeeId);
+      // Refresh the server-rendered Today's Summary so the newly synced trip
+      // and its correction control appear immediately below the form.
+      router.refresh();
     });
   }
 
