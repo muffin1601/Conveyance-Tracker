@@ -116,7 +116,7 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
     <div className="mt-2">
       <button
         type="button"
-        className="flex w-full items-center justify-between gap-3 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2 text-left transition hover:border-brand hover:bg-brand/10 focus:outline-none focus:ring-2 focus:ring-brand/40"
+        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5 text-left transition hover:border-brand hover:bg-brand/10 focus:outline-none focus:ring-2 focus:ring-brand/40"
         onClick={() => {
           setOpen(true);
           setError("");
@@ -127,17 +127,19 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
           <span className="rounded-full bg-brand p-1.5 text-white">
             <PencilLine className="h-3.5 w-3.5" />
           </span>
-          <span>
+          <span className="min-w-0">
             <span className="block text-sm font-semibold text-brand">{t(lang, "correctDistance")}</span>
-            <span className="block text-xs text-muted">{t(lang, "correctDistanceHint")}</span>
+            <span className="block text-xs leading-snug text-muted">{t(lang, "correctDistanceHint")}</span>
           </span>
         </span>
-        <span className="shrink-0 text-xs font-medium text-brand">{lang === "hi" ? "सुधारें →" : "Fix it →"}</span>
+        <span className="hidden shrink-0 text-xs font-medium text-brand sm:inline">
+          {lang === "hi" ? "सुधारें →" : "Fix it →"}
+        </span>
       </button>
 
       {open && (
         <div
-          className="mt-2 w-full max-w-md rounded-lg border border-brand/20 bg-bg p-3 text-sm shadow-sm"
+          className="mt-2 w-full min-w-0 max-w-md rounded-lg border border-brand/20 bg-bg p-3 text-sm shadow-sm sm:p-4"
           role="dialog"
           aria-label={t(lang, "correctTripDistance")}
         >
@@ -193,19 +195,19 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
               />
               <button
                 type="button"
-                className="btn-ghost mt-3 w-full justify-center"
+                className="btn-ghost mt-3 min-h-11 w-full min-w-0 justify-center overflow-hidden"
                 disabled={pending}
                 onClick={() => input.current?.click()}
               >
                 {file ? <ImageIcon className="h-4 w-4" /> : <Upload className="h-4 w-4" />}
-                {file ? file.name : t(lang, "uploadMapScreenshot")}
+                <span className="truncate">{file ? file.name : t(lang, "uploadMapScreenshot")}</span>
               </button>
 
               {error && <p className="mt-2 text-red-600" role="alert">{error}</p>}
 
               <button
                 type="button"
-                className="btn-primary mt-3 w-full justify-center"
+                className="btn-primary mt-3 min-h-11 w-full justify-center"
                 disabled={pending || !file || !value}
                 onClick={submit}
               >

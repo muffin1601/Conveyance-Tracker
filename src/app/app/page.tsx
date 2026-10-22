@@ -8,11 +8,10 @@ import { t } from "@/lib/i18n";
 import { todayKey, monthKey, inr, km, fmtTime } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
-import { DayMap, type DayStop } from "@/components/DayMap";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
 import { NavigateButton } from "@/components/NavigateButton";
-import { ArrowRight } from "lucide-react";
+import { ArrowDown, ArrowRight } from "lucide-react";
 import { CheckinForm } from "./CheckinForm";
 import { MiscExpenses } from "./MiscExpenses";
 import { JourneyBill } from "./JourneyBill";
@@ -118,71 +117,99 @@ async function TodaySummary() {
     .map((entry) => entry.createdAt)
     .sort((a, b) => +b - +a)[0];
 
-  const stops: DayStop[] = [];
-  const first = journeys[0];
-  if (first?.fromLat != null && first.fromLng != null) {
-    stops.push({ order: 0, name: legFromName(first), latitude: first.fromLat, longitude: first.fromLng });
-  }
-  journeys.forEach((journey, index) => {
-    const latitude = journey.toLat ?? journey.toSite?.latitude ?? null;
-    const longitude = journey.toLng ?? journey.toSite?.longitude ?? null;
-    if (latitude != null && longitude != null) {
-      stops.push({ order: index + 1, name: legToName(journey), latitude, longitude });
-    }
-  });
-
   const miscCategoryLabel = (expense: (typeof miscExpenses)[number]) =>
     expense.category === "OTHER"
       ? (expense.customCategory || "Other")
       : MISC_CATEGORY_LABEL[expense.category as MiscCategory] ?? expense.category;
 
   return (
-    <div className="rounded-lg border p-3">
-      <div className="mb-2 flex items-center justify-between">
-        <span className="text-sm font-medium">{employeeName}</span>
+    <div className="min-w-0 rounded-lg border p-2.5 sm:p-4">
+      <div className="mb-3 flex min-w-0 items-center justify-between gap-3">
+        <span className="min-w-0 truncate text-sm font-semibold">{employeeName}</span>
         {lastAt && <span className="text-xs tabular-nums text-muted">{fmtTime(lastAt)}</span>}
       </div>
 
       {journeys.length > 0 && (
         <>
-          <div className="mb-1 text-[11px] font-semibold uppercase tracking-wider text-muted">
+          <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
             {t(lang, "conveyanceLabel")}
           </div>
-          <DayMap label={t(lang, "dayMapLabel")} stops={stops} />
           <ol className="space-y-3">
             {journeys.map((journey, index) => (
-              <li key={journey.id} className="text-sm">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="flex min-w-0 items-center gap-1.5">
-                    <span className="text-[11px] font-semibold tabular-nums text-muted">{index + 1}.</span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted">{fmtTime(journey.createdAt)}</span>
-                    <span className="truncate text-muted">{legFromName(journey)}</span>
-                    <ArrowRight className="h-3 w-3 shrink-0 text-muted" />
-                    <span className="truncate" title={journey.toAddress ?? undefined}>{legToName(journey)}</span>
+              <li key={journey.id} className="min-w-0 rounded-lg border bg-bg/50 p-3 text-sm sm:p-4">
+                <div className="mb-3 flex flex-wrap items-center gap-2">
+                  <span className="rounded-full bg-brand/10 px-2.5 py-1 text-xs font-semibold text-brand">
+                    Trip {index + 1}
+                  </span>
+                  <span className="text-xs tabular-nums text-muted">{fmtTime(journey.createdAt)}</span>
+                  <span className="badge bg-surface text-[10px] text-muted">{modeLabel(journey.vehicleType)}</span>
+                  <span className="ml-auto">
                     {journey.locationType !== "MASTER" && (
-                      <span className="badge shrink-0 bg-bg text-[10px] text-muted">
+                      <span className="badge bg-surface text-[10px] text-muted">
                         {LOCATION_TYPE_LABEL[journey.locationType as LocationType]}
                       </span>
                     )}
-                  </div>
-                  <div className="flex shrink-0 items-center gap-1">
-                    <span className="text-right tabular-nums">
-                      {km(journey.distanceKm)} · {inr(journey.amount)}
-                      {journey.distanceUpdated && (
-                        <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>
-                      )}
-                      <span className="ml-1 text-xs text-muted">{modeLabel(journey.vehicleType)}</span>
-                      <span className="block text-[11px] text-muted">
-                        {km(journeys.slice(0, index + 1).reduce((sum, leg) => sum + leg.distanceKm, 0))}{" "}
-                        {t(lang, "runningTotal")}
-                      </span>
-                    </span>
-                    <NavigateButton lat={journey.toLat} lng={journey.toLng} compact />
-                  </div>
+                  </span>
                 </div>
 
+                <div className="grid min-w-0 gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+                  <div className="min-w-0 rounded-md bg-surface p-3">
+                    <div className="min-w-0 sm:flex sm:items-center sm:gap-3">
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          {t(lang, "startingPoint")}
+                        </div>
+                        <div className="mt-0.5 break-words font-medium text-muted">{legFromName(journey)}</div>
+                      </div>
+                      <ArrowRight className="hidden h-4 w-4 shrink-0 text-muted sm:block" />
+                      <ArrowDown className="my-2 h-4 w-4 text-muted sm:hidden" />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider text-muted">
+                          {t(lang, "destination")}
+                        </div>
+                        <div className="mt-0.5 break-words font-semibold" title={journey.toAddress ?? undefined}>
+                          {legToName(journey)}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <NavigateButton
+                    lat={journey.toLat}
+                    lng={journey.toLng}
+                    address={journey.toAddress}
+                    className="min-h-11 w-full justify-center sm:w-auto"
+                  />
+                </div>
+
+                <dl className="mt-3 grid grid-cols-3 gap-2 text-center tabular-nums">
+                  <div className="min-w-0 rounded-md bg-surface px-1.5 py-2.5">
+                    <dt className="text-[9px] font-semibold uppercase tracking-wide text-muted sm:text-[10px]">
+                      {t(lang, "distance")}
+                    </dt>
+                    <dd className="mt-1 truncate font-semibold">{km(journey.distanceKm)}</dd>
+                  </div>
+                  <div className="min-w-0 rounded-md bg-surface px-1.5 py-2.5">
+                    <dt className="text-[9px] font-semibold uppercase tracking-wide text-muted sm:text-[10px]">
+                      {t(lang, "conveyanceAmount")}
+                    </dt>
+                    <dd className="mt-1 truncate font-semibold text-brand">{inr(journey.amount)}</dd>
+                  </div>
+                  <div className="min-w-0 rounded-md bg-surface px-1.5 py-2.5">
+                    <dt className="text-[9px] font-semibold uppercase tracking-wide text-muted sm:text-[10px]">
+                      {t(lang, "runningTotal")}
+                    </dt>
+                    <dd className="mt-1 truncate font-semibold">
+                      {km(journeys.slice(0, index + 1).reduce((sum, leg) => sum + leg.distanceKm, 0))}
+                    </dd>
+                  </div>
+                </dl>
+
+                {journey.distanceUpdated && (
+                  <p className="mt-2 text-xs font-medium text-emerald-600">Updated distance</p>
+                )}
+
                 {uploadsEnabled && (
-                  <div className="mt-1">
+                  <div className="mt-2">
                     <JourneyBill
                       journeyId={journey.id}
                       employeeId={employeeId}
@@ -203,7 +230,7 @@ async function TodaySummary() {
               </li>
             ))}
           </ol>
-          <div className="mt-2 flex items-center justify-between text-sm tabular-nums">
+          <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-md bg-bg px-3 py-2.5 text-sm tabular-nums">
             <span className="text-muted">{t(lang, "totalConveyanceLabel")}</span>
             <span className="font-medium">{km(totalKm)} · {inr(conveyanceTotal)}</span>
           </div>
@@ -215,10 +242,10 @@ async function TodaySummary() {
           <div className="mb-1 mt-3 text-[11px] font-semibold uppercase tracking-wider text-muted">
             {t(lang, "miscellaneousLabel")}
           </div>
-          <ul className="space-y-1.5">
+          <ul className="space-y-2">
             {miscExpenses.map((expense) => (
-              <li key={expense.id} className="flex items-center justify-between text-sm">
-                <span className="truncate">
+              <li key={expense.id} className="flex items-start justify-between gap-3 rounded-md bg-bg px-3 py-2.5 text-sm">
+                <span className="min-w-0 break-words">
                   {miscCategoryLabel(expense)}{expense.description ? ` · ${expense.description}` : ""}
                 </span>
                 <span className="shrink-0 pl-3 tabular-nums">{inr(expense.amount)}</span>
@@ -232,7 +259,7 @@ async function TodaySummary() {
         </>
       )}
 
-      <div className="mt-2 flex items-center justify-between border-t pt-2 text-sm font-semibold tabular-nums">
+      <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t pt-3 text-sm font-semibold tabular-nums">
         <span>{t(lang, "grandTotal")}</span>
         <span>{inr(conveyanceTotal + miscellaneousTotal)}</span>
       </div>
