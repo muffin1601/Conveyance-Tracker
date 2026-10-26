@@ -6,7 +6,9 @@ import { z } from "zod";
 import { getSettings, saveSettings } from "@/lib/settings";
 import { prisma } from "@/lib/prisma";
 import { audit } from "@/lib/audit";
-import { visitAmount, type TravelMode } from "@/lib/travel";
+import { requireUser } from "@/lib/auth";
+import { computeLegAmount } from "@/lib/conveyance";
+import { VEHICLE_TYPES, type VehicleType } from "@/lib/enums";
 
 const UNLOCK_COOKIE = "watcon_settings_ok";
 
@@ -75,48 +77,52 @@ const entrySchema = z.object({
   id: z.string().optional(),
   employeeId: z.string().min(1),
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
-  fromName: z.string().trim().min(1).max(200),
-  toName: z.string().trim().min(1).max(200),
-  mode: z.enum(["BIKE", "CAR", "BUSMETRO"]),
+  destination: z.string().trim().min(1).max(200),
+  address: z.string().trim().max(300).optional(),
+  locationType: z.enum(["MASTER", "GPS", "CUSTOM"]),
+  mode: z.enum(VEHICLE_TYPES),
   distanceKm: z.coerce.number().positive().max(2000),
+  loginAt: z.string().datetime().optional().or(z.literal("")),
 });
 
-/** PIN-gated manual conveyance entry for staff who could not log a trip. */
+/** PIN-gated admin-created or edited conveyance entry for any staff member. */
 export async function saveStaffEntry(input: z.infer<typeof entrySchema>) {
   if (!(await isSettingsUnlocked())) throw new Error("Settings are locked.");
+  const user = await requireUser();
+  const actor = await prisma.user.findUnique({ where: { id: user.id }, select: { id: true } });
   const v = entrySchema.parse(input);
   const employee = await prisma.employee.findFirst({ where: { id: v.employeeId, deletedAt: null } });
   if (!employee) throw new Error("Select a staff member from the roster.");
   const settings = await getSettings();
   const distanceKm = Math.round(v.distanceKm * 100) / 100;
-  const amount = visitAmount(distanceKm, v.mode as TravelMode, settings.rates);
-  const currentSequence = await prisma.journey.count({ where: { employeeId: v.employeeId, workDate: v.workDate } });
   const data = {
     employeeId: v.employeeId,
     workDate: v.workDate,
-    fromName: v.fromName,
-    toName: v.toName,
+    toName: v.destination,
+    toAddress: v.address || null,
+    toSiteId: null,
+    toCustomLocationId: null,
+    locationType: v.locationType,
     vehicleType: v.mode,
     distanceKm,
     haversineKm: distanceKm,
-    amount,
-    source: "MANUAL",
-    manualDistance: true,
-    manualReason: null,
     roadKm: null,
     durationMin: null,
-    locationType: "CUSTOM",
+    source: "MANUAL",
+    manualDistance: true,
+    manualReason: "Admin-entered conveyance record",
+    amount: computeLegAmount(distanceKm, v.mode as VehicleType, settings.rates),
+    loginAt: v.loginAt ? new Date(v.loginAt) : null,
   };
   if (v.id) {
     const existing = await prisma.journey.findUnique({ where: { id: v.id } });
     if (!existing) throw new Error("Entry not found.");
     await prisma.journey.update({ where: { id: v.id }, data });
-    await audit({ action: "UPDATE", entity: "Journey", entityId: v.id, meta: { adminEntry: true, employeeId: employee.id } });
+    await audit({ userId: actor?.id, action: "UPDATE", entity: "Journey", entityId: v.id, meta: { adminEntry: true, employeeId: employee.id } });
   } else {
-    const created = await prisma.journey.create({
-      data: { ...data, sequence: currentSequence, fromLat: null, fromLng: null, toLat: null, toLng: null },
-    });
-    await audit({ action: "CREATE", entity: "Journey", entityId: created.id, meta: { adminEntry: true, employeeId: employee.id } });
+    const sequence = await prisma.journey.count({ where: { employeeId: v.employeeId, workDate: v.workDate } });
+    const created = await prisma.journey.create({ data: { ...data, fromName: "Head Office", sequence } });
+    await audit({ userId: actor?.id, action: "CREATE", entity: "Journey", entityId: created.id, meta: { adminEntry: true, employeeId: employee.id } });
   }
   revalidatePath("/app/settings");
   revalidatePath("/app/admin");

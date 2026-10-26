@@ -66,7 +66,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     }) : Promise.resolve([]),
     tab === "entries" ? prisma.journey.findMany({
       orderBy: [{ workDate: "desc" }, { createdAt: "desc" }], take: 200,
-      include: { employee: { select: { name: true } } },
+      include: { employee: { select: { name: true } }, toSite: { select: { name: true, address: true } }, toCustomLocation: { select: { locationName: true, address: true } } },
     }) : Promise.resolve([]),
     tab === "entries" ? prisma.employee.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: [{ status: "asc" }, { name: "asc" }] }) : Promise.resolve([]),
   ]);
@@ -132,7 +132,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         }))}
       />}
       {tab === "staff" && <StaffManager staff={staff} hints={hints} startingPoints={startingPoints} />}
-      {tab === "entries" && <StaffEntriesManager staff={entryStaff} entries={entries.map((entry) => ({ id: entry.id, employeeId: entry.employeeId, employee: entry.employee.name, date: entry.workDate, from: entry.fromName ?? "Head Office", to: entry.toName ?? "Destination", mode: entry.vehicleType, distanceKm: entry.distanceKm }))} />}
+      {tab === "entries" && <StaffEntriesManager staff={entryStaff} entries={entries.map((entry) => ({ id: entry.id, employeeId: entry.employeeId, employee: entry.employee.name, date: entry.workDate, destination: entry.toName ?? entry.toSite?.name ?? entry.toCustomLocation?.locationName ?? "Destination", address: entry.toAddress ?? entry.toSite?.address ?? entry.toCustomLocation?.address ?? "", loginAt: entry.loginAt?.toISOString() ?? "", locationType: entry.locationType, mode: entry.vehicleType, distanceKm: entry.distanceKm }))} />}
       {tab === "locations" && <LocationManager sites={sites} />}
     </div>
   );
