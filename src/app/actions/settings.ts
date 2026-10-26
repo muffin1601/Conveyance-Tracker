@@ -4,6 +4,9 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getSettings, saveSettings } from "@/lib/settings";
+import { prisma } from "@/lib/prisma";
+import { audit } from "@/lib/audit";
+import { visitAmount, type TravelMode } from "@/lib/travel";
 
 const UNLOCK_COOKIE = "watcon_settings_ok";
 
@@ -65,5 +68,58 @@ export async function saveAppSettings(input: z.infer<typeof schema>) {
   });
   revalidatePath("/app");
   revalidatePath("/app/settings");
+  return { ok: true };
+}
+
+const entrySchema = z.object({
+  id: z.string().optional(),
+  employeeId: z.string().min(1),
+  workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  fromName: z.string().trim().min(1).max(200),
+  toName: z.string().trim().min(1).max(200),
+  mode: z.enum(["BIKE", "CAR", "BUSMETRO"]),
+  distanceKm: z.coerce.number().positive().max(2000),
+});
+
+/** PIN-gated manual conveyance entry for staff who could not log a trip. */
+export async function saveStaffEntry(input: z.infer<typeof entrySchema>) {
+  if (!(await isSettingsUnlocked())) throw new Error("Settings are locked.");
+  const v = entrySchema.parse(input);
+  const employee = await prisma.employee.findFirst({ where: { id: v.employeeId, deletedAt: null } });
+  if (!employee) throw new Error("Select a staff member from the roster.");
+  const settings = await getSettings();
+  const distanceKm = Math.round(v.distanceKm * 100) / 100;
+  const amount = visitAmount(distanceKm, v.mode as TravelMode, settings.rates);
+  const currentSequence = await prisma.journey.count({ where: { employeeId: v.employeeId, workDate: v.workDate } });
+  const data = {
+    employeeId: v.employeeId,
+    workDate: v.workDate,
+    fromName: v.fromName,
+    toName: v.toName,
+    vehicleType: v.mode,
+    distanceKm,
+    haversineKm: distanceKm,
+    amount,
+    source: "MANUAL",
+    manualDistance: true,
+    manualReason: null,
+    roadKm: null,
+    durationMin: null,
+    locationType: "CUSTOM",
+  };
+  if (v.id) {
+    const existing = await prisma.journey.findUnique({ where: { id: v.id } });
+    if (!existing) throw new Error("Entry not found.");
+    await prisma.journey.update({ where: { id: v.id }, data });
+    await audit({ action: "UPDATE", entity: "Journey", entityId: v.id, meta: { adminEntry: true, employeeId: employee.id } });
+  } else {
+    const created = await prisma.journey.create({
+      data: { ...data, sequence: currentSequence, fromLat: null, fromLng: null, toLat: null, toLng: null },
+    });
+    await audit({ action: "CREATE", entity: "Journey", entityId: created.id, meta: { adminEntry: true, employeeId: employee.id } });
+  }
+  revalidatePath("/app/settings");
+  revalidatePath("/app/admin");
+  revalidatePath("/app");
   return { ok: true };
 }

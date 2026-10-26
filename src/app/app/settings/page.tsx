@@ -8,6 +8,7 @@ import { LocationManager } from "./LocationManager";
 import { CorrectionHistory } from "./CorrectionHistory";
 import { PinGate } from "@/components/PinGate";
 import { WorkspaceTabs } from "@/components/WorkspaceTabs";
+import { StaffEntriesManager } from "./StaffEntriesManager";
 
 /** Staff and sites are edited here, so this page must never serve a stale list. */
 export const dynamic = "force-dynamic";
@@ -18,13 +19,13 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     return <PinGate title="Settings locked" subtitle="Enter the PIN to manage company details, staff and locations." />;
   }
   const sp = await searchParams;
-  const validTabs = ["general", "rates", "security", "staff", "locations", "history"] as const;
+  const validTabs = ["general", "rates", "security", "staff", "entries", "locations", "history"] as const;
   const tab = validTabs.includes(sp.tab as typeof validTabs[number]) ? sp.tab as typeof validTabs[number] : "general";
 
   // Load only the active tab's records. Previously every click downloaded the
   // full staff list, site list, and correction history even though five of the
   // six tabs immediately hid most of that data.
-  const [settings, staffCount, siteCount, historyCount, staff, sites, startingPoints, correctionHistory] = await Promise.all([
+  const [settings, staffCount, siteCount, historyCount, staff, sites, startingPoints, correctionHistory, entries, entryStaff] = await Promise.all([
     getSettings(),
     prisma.employee.count({ where: { deletedAt: null } }),
     prisma.site.count({ where: { deletedAt: null } }),
@@ -63,6 +64,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         journey: { select: { workDate: true, fromName: true, toName: true } },
       },
     }) : Promise.resolve([]),
+    tab === "entries" ? prisma.journey.findMany({
+      orderBy: [{ workDate: "desc" }, { createdAt: "desc" }], take: 200,
+      include: { employee: { select: { name: true } } },
+    }) : Promise.resolve([]),
+    tab === "entries" ? prisma.employee.findMany({ where: { deletedAt: null }, select: { id: true, name: true }, orderBy: [{ status: "asc" }, { name: "asc" }] }) : Promise.resolve([]),
   ]);
 
   // Offer the values already in use as suggestions, so new entries stay
@@ -103,6 +109,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         { id: "rates", label: "Conveyance rates" },
         { id: "security", label: "Security" },
         { id: "staff", label: "Staff", count: staffCount },
+        { id: "entries", label: "Staff entries" },
         { id: "locations", label: "Locations", count: siteCount },
         { id: "history", label: "Correction history", count: historyCount },
       ]} />
@@ -125,6 +132,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         }))}
       />}
       {tab === "staff" && <StaffManager staff={staff} hints={hints} startingPoints={startingPoints} />}
+      {tab === "entries" && <StaffEntriesManager staff={entryStaff} entries={entries.map((entry) => ({ id: entry.id, employeeId: entry.employeeId, employee: entry.employee.name, date: entry.workDate, from: entry.fromName ?? "Head Office", to: entry.toName ?? "Destination", mode: entry.vehicleType, distanceKm: entry.distanceKm }))} />}
       {tab === "locations" && <LocationManager sites={sites} />}
     </div>
   );
