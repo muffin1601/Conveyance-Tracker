@@ -1,5 +1,6 @@
 "use client";
 
+import { useSyncExternalStore } from "react";
 import Link, { useLinkStatus } from "next/link";
 import { usePathname } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -13,6 +14,10 @@ const TABS: { href: string; key: DictKey }[] = [
   { href: "/app/settings", key: "navSettings" },
 ];
 
+const subscribeHydration = () => () => {};
+const getClientHydration = () => true;
+const getServerHydration = () => false;
+
 function LinkProgress() {
   const { pending } = useLinkStatus();
   return pending ? <Loader2 className="h-3.5 w-3.5 animate-spin" aria-label="Loading" /> : null;
@@ -20,6 +25,7 @@ function LinkProgress() {
 
 export function TopNav({ lang }: { lang: Lang }) {
   const pathname = usePathname();
+  const hydrated = useSyncExternalStore(subscribeHydration, getClientHydration, getServerHydration);
   return (
     <nav className="border-b">
       <div className="max-w-6xl mx-auto w-full px-4 md:px-8 flex items-center justify-between gap-2">
@@ -27,7 +33,9 @@ export function TopNav({ lang }: { lang: Lang }) {
             pushing the page wider than the screen. */}
         <div className="flex min-w-0 gap-1 overflow-x-auto">
           {TABS.map((tab) => {
-            const active = tab.href === "/app" ? pathname === "/app" : pathname.startsWith(tab.href);
+            // Rewrites can make the browser pathname differ from the server's
+            // initial route. Keep the first client render identical to SSR.
+            const active = hydrated && (tab.href === "/app" ? pathname === "/app" : pathname.startsWith(tab.href));
             return (
               <Link
                 key={tab.href}

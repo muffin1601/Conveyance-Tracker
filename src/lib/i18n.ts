@@ -369,7 +369,11 @@ export type DictKey = keyof typeof DICT;
 
 /** Look up one string, substituting any `{placeholder}` values given. */
 export function t(lang: Lang, key: DictKey, vars?: Record<string, string>): string {
-  let text: string = DICT[key][lang];
+  const entry = DICT[key] as { en?: string; hi?: string } | undefined;
+  // Server actions, stale dev bundles, and persisted UI state can sometimes
+  // deliver a key from a different dictionary version. Render a readable
+  // fallback instead of taking down the whole page during hydration.
+  let text = entry?.[lang] ?? entry?.en ?? String(key ?? "Translation unavailable");
   if (vars) {
     for (const [k, v] of Object.entries(vars)) text = text.replaceAll(`{${k}}`, v);
   }
