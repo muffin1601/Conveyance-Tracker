@@ -46,9 +46,8 @@ function niceScaleKm(spanKm: number): number {
   return 10 * pow;
 }
 
-export function DayMap({ stops, label }: { stops: DayStop[]; label: string }) {
-  // One stop is a dot with no shape to read; nothing useful to draw.
-  if (stops.length < 2) return null;
+export function DayMap({ stops, label, caption }: { stops: DayStop[]; label: string; caption: string }) {
+  if (stops.length === 0) return null;
 
   const xs = stops.map((s) => s.longitude);
   const ys = stops.map((s) => mercatorY(s.latitude));
@@ -57,8 +56,10 @@ export function DayMap({ stops, label }: { stops: DayStop[]; label: string }) {
 
   // A day spent in one building has no extent to scale to; guard the divide
   // and let the points sit in the middle rather than exploding to infinity.
-  const spanX = maxX - minX || 1e-6;
-  const spanY = maxY - minY || 1e-6;
+  const rawSpanX = maxX - minX;
+  const rawSpanY = maxY - minY;
+  const spanX = rawSpanX || 1e-6;
+  const spanY = rawSpanY || 1e-6;
   // One scale for both axes, so the drawing keeps the real aspect ratio — a
   // stretched map would misrepresent which legs were long.
   const scale = Math.min((WIDTH - PADDING * 2) / spanX, (HEIGHT - PADDING * 2) / spanY);
@@ -66,9 +67,9 @@ export function DayMap({ stops, label }: { stops: DayStop[]; label: string }) {
   const offsetY = (HEIGHT - spanY * scale) / 2;
 
   const project = (s: DayStop) => ({
-    x: offsetX + (s.longitude - minX) * scale,
+    x: rawSpanX === 0 ? WIDTH / 2 : offsetX + (s.longitude - minX) * scale,
     // SVG y grows downwards; Mercator y grows north. Flip it.
-    y: HEIGHT - (offsetY + (mercatorY(s.latitude) - minY) * scale),
+    y: rawSpanY === 0 ? HEIGHT / 2 : HEIGHT - (offsetY + (mercatorY(s.latitude) - minY) * scale),
   });
 
   const points = stops.map(project);
@@ -86,7 +87,7 @@ export function DayMap({ stops, label }: { stops: DayStop[]; label: string }) {
     <figure className="mt-3">
       <svg
         viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-        className="w-full rounded-md border bg-bg"
+        className="w-full rounded-md border bg-bg text-brand"
         role="img"
         aria-label={label}
       >
@@ -112,6 +113,7 @@ export function DayMap({ stops, label }: { stops: DayStop[]; label: string }) {
           </g>
         )}
       </svg>
+      <figcaption className="mt-1.5 text-xs text-muted">{caption}</figcaption>
     </figure>
   );
 }

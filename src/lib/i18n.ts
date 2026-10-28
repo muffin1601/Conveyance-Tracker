@@ -292,6 +292,8 @@ const DICT = {
   /** The cumulative distance for the selected employee's current day. */
   runningTotal: { en: "Total today", hi: "आज का कुल" },
   dayMapLabel: { en: "Map of today's stops, in order", hi: "आज की जगहों का नक्शा, क्रम में" },
+  dayMapCaption: { en: "Stops are numbered in trip order. Lines show the stop sequence, not the road route.", hi: "जगहों पर trip के क्रम में नंबर दिए गए हैं। रेखाएँ जगहों का क्रम दिखाती हैं, सड़क का रास्ता नहीं।" },
+  dayMapUnavailable: { en: "A map will appear when location coordinates are available for today's trips.", hi: "आज की trips के लिए location coordinates उपलब्ध होने पर नक्शा दिखाई देगा।" },
   datedDayMapLabel: { en: "Map of this day's stops, in order", hi: "इस दिन की जगहों का नक्शा, क्रम में" },
   // Asked when the starting point sits far from where the last logged trip
   // ended — nearly always a restart tapped by accident.

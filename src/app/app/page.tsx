@@ -11,6 +11,8 @@ import { legFromName, legToName } from "@/lib/journeyEndpoint";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
 import { NavigateButton } from "@/components/NavigateButton";
+import { DayMap, type DayStop } from "@/components/DayMap";
+import { haversineMeters, isValidCoord } from "@/lib/gps";
 import { ArrowDown, ArrowRight } from "lucide-react";
 import { CheckinForm } from "./CheckinForm";
 import { MiscExpenses } from "./MiscExpenses";
@@ -89,10 +91,10 @@ async function TodaySummary() {
       orderBy: { sequence: "asc" },
       include: {
         employee: { select: { id: true, name: true } },
-        fromSite: { select: { name: true } },
+        fromSite: { select: { name: true, latitude: true, longitude: true } },
         toSite: { select: { name: true, city: true, latitude: true, longitude: true } },
-        fromCustomLocation: { select: { locationName: true } },
-        toCustomLocation: { select: { locationName: true } },
+        fromCustomLocation: { select: { locationName: true, latitude: true, longitude: true } },
+        toCustomLocation: { select: { locationName: true, latitude: true, longitude: true } },
         distanceCorrection: {
           select: { id: true, status: true, submittedDistanceKm: true, finalDistanceKm: true },
         },
@@ -110,6 +112,28 @@ async function TodaySummary() {
 
   const uploadsEnabled = isUploadConfigured();
   const employeeName = journeys[0]?.employee.name ?? miscExpenses[0]?.employee.name ?? "";
+  const mapStops: DayStop[] = [];
+  const addMapStop = (name: string, latitude: number | null, longitude: number | null) => {
+    if (latitude == null || longitude == null || !isValidCoord(latitude, longitude)) return;
+    const previous = mapStops.at(-1);
+    if (previous && haversineMeters(
+      { lat: previous.latitude, lng: previous.longitude },
+      { lat: latitude, lng: longitude },
+    ) < 30) return;
+    mapStops.push({ order: mapStops.length + 1, name, latitude, longitude });
+  };
+  for (const journey of journeys) {
+    addMapStop(
+      legFromName(journey),
+      journey.fromLat ?? journey.fromSite?.latitude ?? journey.fromCustomLocation?.latitude ?? null,
+      journey.fromLng ?? journey.fromSite?.longitude ?? journey.fromCustomLocation?.longitude ?? null,
+    );
+    addMapStop(
+      legToName(journey),
+      journey.toLat ?? journey.toSite?.latitude ?? journey.toCustomLocation?.latitude ?? null,
+      journey.toLng ?? journey.toSite?.longitude ?? journey.toCustomLocation?.longitude ?? null,
+    );
+  }
   const totalKm = journeys.reduce((sum, journey) => sum + journey.distanceKm, 0);
   const conveyanceTotal = journeys.reduce((sum, journey) => sum + journey.amount, 0);
   const miscellaneousTotal = miscExpenses.reduce((sum, expense) => sum + expense.amount, 0);
@@ -131,6 +155,13 @@ async function TodaySummary() {
 
       {journeys.length > 0 && (
         <>
+          {mapStops.length > 0 ? (
+            <DayMap stops={mapStops} label={t(lang, "dayMapLabel")} caption={t(lang, "dayMapCaption")} />
+          ) : (
+            <p className="rounded-md bg-bg px-3 py-2 text-xs text-muted">
+              {t(lang, "dayMapUnavailable")}
+            </p>
+          )}
           <div className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-muted">
             {t(lang, "conveyanceLabel")}
           </div>
