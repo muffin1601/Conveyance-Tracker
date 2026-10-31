@@ -149,6 +149,10 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
       throw new Error("This correction was already reviewed.");
     }
 
+    const reviewer = user
+      ? await tx.user.findUnique({ where: { id: user.id }, select: { id: true } })
+      : null;
+    const reviewerId = reviewer?.id ?? null;
     const reviewedAt = new Date();
     const { routeKey: derivedRouteKey } = buildRouteKey(
       correction.journey.fromName ?? "",
@@ -173,7 +177,7 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
         finalDistanceKm: input.decision === "APPROVED" ? final! : null,
         adminNote: input.note?.trim() || null,
         reviewedAt,
-        reviewedById: user?.id ?? null,
+        reviewedById: reviewerId,
         // Backfill routeKey for legacy rows so threshold lookups stay indexed
         ...(derivedRouteKey ? { routeKey: derivedRouteKey } : {}),
       },
@@ -207,7 +211,7 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
       };
       await tx.auditLog.create({
         data: {
-          userId: user?.id ?? null,
+          userId: reviewerId,
           action: input.decision,
           entity: "DistanceCorrection",
           entityId: input.id,
@@ -234,7 +238,7 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
     };
     await tx.auditLog.create({
       data: {
-        userId: user?.id ?? null,
+        userId: reviewerId,
         action: input.decision,
         entity: "DistanceCorrection",
         entityId: input.id,
