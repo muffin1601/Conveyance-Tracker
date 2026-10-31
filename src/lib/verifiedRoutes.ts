@@ -22,6 +22,7 @@ export const DEFAULT_VERIFIED_ROUTE_CONFIG: VerifiedRouteConfig = {
 };
 
 type RouteTransactionClient = Parameters<Parameters<typeof prisma.$transaction>[0]>[0];
+type RouteDbClient = typeof prisma | RouteTransactionClient;
 
 async function lockRoute(db: RouteTransactionClient, routeKey: string) {
   await db.$queryRaw`
@@ -37,9 +38,11 @@ const SETTING_KEY = "verified_route_config";
 /**
  * Get active configuration for verified routes from database Settings or default.
  */
-export async function getVerifiedRouteConfig(): Promise<VerifiedRouteConfig> {
+export async function getVerifiedRouteConfig(
+  db: RouteDbClient = prisma
+): Promise<VerifiedRouteConfig> {
   try {
-    const setting = await prisma.setting.findUnique({
+    const setting = await db.setting.findUnique({
       where: { key: SETTING_KEY },
     });
     if (setting?.value) {
@@ -315,7 +318,7 @@ export async function processApprovedCorrection(
   await lockRoute(db, routeKey);
 
   // Load active threshold config
-  const config = await getVerifiedRouteConfig();
+  const config = await getVerifiedRouteConfig(db);
   const matchingCorrections = await loadApprovedCorrectionsForRoute(db, routeKey);
   const approvalCount = matchingCorrections.length;
   const thresholdMet = approvalCount >= config.detectionThreshold;
@@ -418,18 +421,20 @@ export async function processApprovedCorrection(
     });
   }
 
-  await audit({
-    userId: correction.reviewedById ?? null,
-    action: "VERIFY_ROUTE",
-    entity: "VerifiedRouteDistance",
-    entityId: verifiedRoute.id,
-    meta: {
-      routeKey,
-      approvalCount,
-      verifiedDistanceKm: verifiedRoute.verifiedDistanceKm,
-      computedDistanceKm,
-      source: verifiedRoute.source,
-      correctionId: correction.id,
+  await db.auditLog.create({
+    data: {
+      userId: correction.reviewedById ?? null,
+      action: "VERIFY_ROUTE",
+      entity: "VerifiedRouteDistance",
+      entityId: verifiedRoute.id,
+      meta: JSON.stringify({
+        routeKey,
+        approvalCount,
+        verifiedDistanceKm: verifiedRoute.verifiedDistanceKm,
+        computedDistanceKm,
+        source: verifiedRoute.source,
+        correctionId: correction.id,
+      }),
     },
   });
 

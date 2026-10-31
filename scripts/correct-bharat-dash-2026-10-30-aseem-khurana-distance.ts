@@ -3,6 +3,7 @@ import "dotenv/config";
 import { PrismaClient } from "@prisma/client";
 import { computeLegAmount } from "../src/lib/conveyance";
 import { getSettings } from "../src/lib/settings";
+import { buildRouteKey } from "../src/lib/locationNormalizer";
 import type { VehicleType } from "../src/lib/enums";
 
 const prisma = new PrismaClient();
@@ -55,9 +56,8 @@ async function main() {
   }
 
   const journey = targetEntries[0];
-  if (Math.abs(journey.distanceKm - CONFIRMED_DISTANCE_KM) < 0.001) {
-    console.log("The Bharat Dash Aseem Khurana entry is already 13 km; no changes made.");
-    return;
+  if (!journey.fromName || !journey.toName) {
+    throw new Error("The matching entry is missing its route labels; no distance or route memory was changed.");
   }
   if (
     journey.distanceCorrection &&
@@ -73,6 +73,13 @@ async function main() {
   const amount = ["BIKE", "CAR"].includes(vehicleType)
     ? computeLegAmount(CONFIRMED_DISTANCE_KM, vehicleType, settings.rates)
     : journey.amount;
+  const { routeKey, fromNormalized, toNormalized } = buildRouteKey(
+    journey.fromName,
+    journey.toName
+  );
+  const existingRoute = await prisma.verifiedRouteDistance.findUnique({
+    where: { routeKey },
+  });
   console.table([{
     employee: `${employee.name} (${employee.employeeCode})`,
     date: WORK_DATE,
@@ -82,10 +89,13 @@ async function main() {
     toKm: CONFIRMED_DISTANCE_KM,
     fromAmount: journey.amount,
     toAmount: amount,
+    routeMemory: existingRoute
+      ? `${existingRoute.verifiedDistanceKm} km (${existingRoute.status}) -> ${CONFIRMED_DISTANCE_KM} km ACTIVE`
+      : `Create permanent ${CONFIRMED_DISTANCE_KM} km verified route`,
   }]);
 
   if (!APPLY) {
-    console.log("Dry run only. Re-run with --apply to save the corrected distance.");
+    console.log("Dry run only. Re-run with --apply to save the distance and permanent route memory.");
     return;
   }
 
@@ -120,6 +130,50 @@ async function main() {
       });
     }
 
+    const route = await tx.verifiedRouteDistance.findUnique({ where: { routeKey } });
+    const verifiedRoute = route
+      ? await tx.verifiedRouteDistance.update({
+          where: { id: route.id },
+          data: {
+            fromNormalized,
+            toNormalized,
+            fromLocationName: journey.fromName ?? fromNormalized,
+            toLocationName: journey.toName ?? toNormalized,
+            verifiedDistanceKm: CONFIRMED_DISTANCE_KM,
+            source: "MANUAL_ADMIN",
+            status: "ACTIVE",
+            notes: REASON,
+            lastVerifiedAt: updatedAt,
+          },
+        })
+      : await tx.verifiedRouteDistance.create({
+          data: {
+            routeKey,
+            fromNormalized,
+            toNormalized,
+            fromLocationName: journey.fromName ?? fromNormalized,
+            toLocationName: journey.toName ?? toNormalized,
+            verifiedDistanceKm: CONFIRMED_DISTANCE_KM,
+            approvalCount: 0,
+            source: "MANUAL_ADMIN",
+            status: "ACTIVE",
+            notes: REASON,
+            lastVerifiedAt: updatedAt,
+          },
+        });
+    await tx.verifiedRouteAudit.create({
+      data: {
+        verifiedRouteDistanceId: verifiedRoute.id,
+        action: route ? "MANUAL_UPDATE" : "MANUAL_CREATE",
+        previousDistanceKm: route?.verifiedDistanceKm ?? null,
+        newDistanceKm: CONFIRMED_DISTANCE_KM,
+        previousStatus: route?.status ?? null,
+        newStatus: "ACTIVE",
+        reason: REASON,
+        createdAt: updatedAt,
+      },
+    });
+
     await tx.auditLog.create({
       data: {
         action: "UPDATE",
@@ -134,11 +188,12 @@ async function main() {
           previousDistanceKm: journey.distanceKm,
           updatedDistanceKm: CONFIRMED_DISTANCE_KM,
           correctionId: journey.distanceCorrection?.id ?? null,
+          verifiedRouteKey: routeKey,
         }),
       },
     });
   });
-  console.log(`Updated Bharat Dash's ${WORK_DATE} Aseem Khurana entry to ${CONFIRMED_DISTANCE_KM} km.`);
+  console.log(`Updated Bharat Dash's ${WORK_DATE} Aseem Khurana entry and permanently verified the route at ${CONFIRMED_DISTANCE_KM} km.`);
 }
 
 main()

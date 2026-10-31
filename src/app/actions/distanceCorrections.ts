@@ -22,6 +22,7 @@ import {
   getRouteCorrectionHistory,
   getCorrectionIntelligenceData,
   lookupVerifiedRoute,
+  compareSubmittedToVerifiedRoute,
   type VerifiedRouteConfig,
 } from "@/lib/verifiedRoutes";
 import { buildRouteKey } from "@/lib/locationNormalizer";
@@ -54,6 +55,17 @@ export async function requestDistanceCorrectionUpload(input: { journeyId: string
 
 export async function submitDistanceCorrection(input: z.infer<typeof request>) {
   const v = request.parse(input); const { journey } = await ownJourney(v.journeyId);
+  const verifiedRoute = await compareSubmittedToVerifiedRoute(
+    journey.fromName ?? "",
+    journey.toName ?? "",
+    v.submittedDistanceKm
+  );
+  if (verifiedRoute.isVerified && verifiedRoute.matchesWithinTolerance) {
+    throw new Error(
+      `This route is already verified at ${verifiedRoute.verifiedDistanceKm} km. ` +
+      "The submitted distance is within the allowed tolerance, so another correction is not needed."
+    );
+  }
   const existing = await prisma.distanceCorrection.findUnique({ where: { journeyId: v.journeyId } });
   if (existing) throw new Error(existing.status === "REJECTED" ? "This trip already has a correction request." : "Your correction is already being reviewed.");
   const employee = await prisma.employee.findUniqueOrThrow({ where: { id: journey.employeeId }, select: { employeeCode: true } });
@@ -185,7 +197,7 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
       // Automatic Frequent Correction Detection & Permanent Distance Correction Memory
       const verifiedUpdate = await processApprovedCorrection(correction.id, tx);
 
-      return {
+      const result = {
         journeyId: correction.journey.id,
         originalDistanceKm: correction.journey.distanceKm,
         amount,
@@ -193,8 +205,26 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
         approvalCount: verifiedUpdate.approvalCount,
         verifiedDistanceKm: verifiedUpdate.verifiedDistanceKm,
       };
+      await tx.auditLog.create({
+        data: {
+          userId: user?.id ?? null,
+          action: input.decision,
+          entity: "DistanceCorrection",
+          entityId: input.id,
+          meta: JSON.stringify({
+            journeyId: result.journeyId,
+            originalDistanceKm: result.originalDistanceKm,
+            finalDistanceKm: final,
+            amount: result.amount,
+            thresholdMet: result.thresholdMet,
+            approvalCount: result.approvalCount,
+            verifiedDistanceKm: result.verifiedDistanceKm,
+          }),
+        },
+      });
+      return result;
     }
-    return {
+    const result = {
       journeyId: correction.journey.id,
       originalDistanceKm: correction.journey.distanceKm,
       amount: correction.journey.amount,
@@ -202,22 +232,24 @@ export async function reviewDistanceCorrection(input: { id: string; decision: "A
       approvalCount: 0,
       verifiedDistanceKm: null,
     };
-  });
-
-  await audit({
-    userId: user?.id ?? null,
-    action: input.decision,
-    entity: "DistanceCorrection",
-    entityId: input.id,
-    meta: {
-      journeyId: result.journeyId,
-      originalDistanceKm: result.originalDistanceKm,
-      finalDistanceKm: final ?? null,
-      amount: result.amount,
-      thresholdMet: result.thresholdMet,
-      approvalCount: result.approvalCount,
-      verifiedDistanceKm: result.verifiedDistanceKm,
-    },
+    await tx.auditLog.create({
+      data: {
+        userId: user?.id ?? null,
+        action: input.decision,
+        entity: "DistanceCorrection",
+        entityId: input.id,
+        meta: JSON.stringify({
+          journeyId: result.journeyId,
+          originalDistanceKm: result.originalDistanceKm,
+          finalDistanceKm: null,
+          amount: result.amount,
+          thresholdMet: false,
+          approvalCount: 0,
+          verifiedDistanceKm: null,
+        }),
+      },
+    });
+    return result;
   });
 
   revalidatePath("/app");

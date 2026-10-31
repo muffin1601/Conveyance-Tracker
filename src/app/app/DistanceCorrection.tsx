@@ -153,16 +153,6 @@ export function DistanceCorrection({
             </span>
             <span className="text-muted">({t(lang, "routeVerifiedMatches")})</span>
           </div>
-          <button
-            type="button"
-            className="text-[11px] text-brand underline"
-            onClick={() => {
-              setOpen(true);
-              setError("");
-            }}
-          >
-            {t(lang, "correctDistance")}
-          </button>
         </div>
       )}
 
