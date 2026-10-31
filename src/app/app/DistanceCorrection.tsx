@@ -9,7 +9,10 @@ import {
 } from "@/app/actions/distanceCorrections";
 import { errorMessage } from "@/lib/errors";
 import { t, DEFAULT_LANG, type Lang } from "@/lib/i18n";
-import { calculateDistanceDiscrepancy } from "@/lib/verifiedRouteMath";
+import {
+  calculateDistanceDiscrepancy,
+  isRedundantVerifiedRouteCorrection,
+} from "@/lib/verifiedRouteMath";
 
 type Correction = {
   id: string;
@@ -60,6 +63,21 @@ export function DistanceCorrection({
       )
     : null;
   const isMatchWithVerified = Boolean(verifiedMatch?.matchesWithinTolerance);
+  const submittedKm = Number(value);
+  const isRedundantCorrection = Boolean(
+    value.trim() &&
+    Number.isFinite(submittedKm) &&
+    submittedKm > 0 &&
+    verifiedRoute?.isVerified &&
+    verifiedRoute.verifiedDistanceKm != null &&
+    isRedundantVerifiedRouteCorrection(
+      recordedKm,
+      submittedKm,
+      verifiedRoute.verifiedDistanceKm,
+      verifiedRoute.toleranceKm,
+      verifiedRoute.tolerancePercent,
+    )
+  );
 
   if (correction) {
     const status = ["APPROVED", "AUTO_VERIFIED"].includes(correction.status)
@@ -123,7 +141,7 @@ export function DistanceCorrection({
             : "The screenshot could not be uploaded. Check your connection and try again.");
         }
 
-        await submitDistanceCorrection({
+        const result = await submitDistanceCorrection({
           journeyId,
           submittedDistanceKm: distance,
           screenshot: {
@@ -134,6 +152,10 @@ export function DistanceCorrection({
           },
           reason: reason.trim() || undefined,
         });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
         setSubmitted(true);
       } catch (cause) {
         setError(errorMessage(cause));
@@ -252,6 +274,11 @@ export function DistanceCorrection({
               <p className="mt-1 text-xs text-muted">
                 {t(lang, "recordedDistance")}: {recordedKm.toFixed(2)} km
               </p>
+              {isRedundantCorrection && (
+                <p className="mt-1 text-xs text-emerald-700" role="status">
+                  This trip already matches the verified route. No correction is needed.
+                </p>
+              )}
 
               <label className="mt-2.5 block text-xs font-medium text-muted" htmlFor={`reason-${journeyId}`}>
                 {t(lang, "correctionReasonOptional")}
@@ -291,7 +318,7 @@ export function DistanceCorrection({
               <button
                 type="button"
                 className="btn-primary mt-3 min-h-11 w-full justify-center"
-                disabled={pending || !file || !value}
+                disabled={pending || !file || !value || isRedundantCorrection}
                 onClick={submit}
               >
                 {pending ? t(lang, "submittingCorrection") : t(lang, "submitCorrection")}

@@ -43,3 +43,22 @@ export function calculateDistanceDiscrepancy(
     exceedsTolerance: !matchesWithinTolerance,
   };
 }
+
+/**
+ * A correction is redundant only when both the currently recorded trip and
+ * the employee's proposed distance already match permanent route memory.
+ */
+export function isRedundantVerifiedRouteCorrection(
+  recordedKm: number,
+  submittedKm: number,
+  verifiedKm: number,
+  toleranceKm = DEFAULT_VERIFIED_ROUTE_TOLERANCE.toleranceKm,
+  tolerancePercent = DEFAULT_VERIFIED_ROUTE_TOLERANCE.tolerancePercent,
+): boolean {
+  return (
+    calculateDistanceDiscrepancy(recordedKm, verifiedKm, toleranceKm, tolerancePercent)
+      .matchesWithinTolerance &&
+    calculateDistanceDiscrepancy(submittedKm, verifiedKm, toleranceKm, tolerancePercent)
+      .matchesWithinTolerance
+  );
+}

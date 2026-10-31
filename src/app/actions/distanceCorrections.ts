@@ -13,6 +13,7 @@ import { isSettingsUnlocked } from "./settings";
 import { computeLegAmount } from "@/lib/conveyance";
 import { getSettings } from "@/lib/settings";
 import type { VehicleType } from "@/lib/enums";
+import { isRedundantVerifiedRouteCorrection } from "@/lib/verifiedRouteMath";
 
 import {
   processApprovedCorrection,
@@ -61,10 +62,19 @@ export async function submitDistanceCorrection(input: z.infer<typeof request>) {
     journey.toName ?? "",
     v.submittedDistanceKm
   );
-  if (verifiedRoute.isVerified && verifiedRoute.matchesWithinTolerance) {
-    throw new Error(
-      `This route is already verified at ${verifiedRoute.verifiedDistanceKm} km. ` +
-      "The submitted distance is within the allowed tolerance, so another correction is not needed."
+  if (
+    verifiedRoute.isVerified &&
+    verifiedRoute.verifiedDistanceKm != null &&
+    isRedundantVerifiedRouteCorrection(
+      journey.distanceKm,
+      v.submittedDistanceKm,
+      verifiedRoute.verifiedDistanceKm,
+      verifiedRoute.toleranceKm,
+      verifiedRoute.tolerancePercent,
+    )
+  ) {
+    return fail(
+      `This trip is already recorded within tolerance of the verified ${verifiedRoute.verifiedDistanceKm} km route. No correction is needed.`,
     );
   }
   const existing = await prisma.distanceCorrection.findUnique({ where: { journeyId: v.journeyId } });
@@ -117,7 +127,7 @@ export async function submitDistanceCorrection(input: z.infer<typeof request>) {
     },
   });
   revalidatePath("/app"); revalidatePath("/app/admin");
-  return { status: created.status };
+  return { ok: true as const, status: created.status };
 }
 
 export async function getDistanceCorrectionImage(id: string) {

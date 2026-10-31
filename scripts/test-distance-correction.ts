@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { distanceDifference, getEffectiveTripDistance, verificationDecision } from "../src/lib/distanceCorrection";
+import { isRedundantVerifiedRouteCorrection } from "../src/lib/verifiedRouteMath";
 
 test("difference is safe and uses the larger distance", () => {
   const r = distanceDifference(12.4, 18.6);
@@ -16,4 +17,11 @@ test("moderate evidence can verify and the original distance remains auditable",
   assert.equal(getEffectiveTripDistance({ distanceKm: 12.4, distanceCorrection: null }), 12.4);
   assert.equal(getEffectiveTripDistance({ distanceKm: 12.4, distanceCorrection: { status: "APPROVED", finalDistanceKm: 18.6 } }), 18.6);
   assert.equal(getEffectiveTripDistance({ distanceKm: 12.4, distanceCorrection: { status: "REJECTED", finalDistanceKm: null } }), 12.4);
+});
+
+test("a verified distance may correct a recorded mismatch but duplicate matching corrections are suppressed", () => {
+  assert.equal(isRedundantVerifiedRouteCorrection(8.5, 12.5, 12.5), false);
+  assert.equal(isRedundantVerifiedRouteCorrection(12.5, 12.5, 12.5), true);
+  assert.equal(isRedundantVerifiedRouteCorrection(12.5, 16, 12.5), false);
+  assert.equal(isRedundantVerifiedRouteCorrection(8.5, 16, 12.5), false);
 });
