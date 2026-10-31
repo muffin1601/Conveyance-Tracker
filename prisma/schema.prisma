@@ -259,13 +259,16 @@ model Journey {
   loginAt DateTime?
 
   distanceKm  Float // chosen distance used for reimbursement
+  // The pre-verification distance, recorded only when permanent route memory
+  // automatically replaces it because the discrepancy exceeds tolerance.
+  submittedDistanceKm Float?
   // Set when an administrator approves a submitted distance correction. The
   // original value remains in DistanceCorrection.originalDistanceKm for audit.
   distanceUpdated   Boolean   @default(false)
   distanceUpdatedAt DateTime?
-  // Snapshot of permanent verified-route memory at log time. Never overwrites
-  // distanceKm. MATCH = submitted km within configured tolerance; EXCEEDS =
-  // flagged for review. Null when no ACTIVE verified route existed.
+  // Snapshot of permanent route memory compared with the pre-verification
+  // distance. submittedDistanceKm preserves that value when memory applies an
+  // automatic correction; EXCEEDS therefore records the original discrepancy.
   verifiedDistanceKm     Float?
   verifiedDiscrepancyKm  Float?
   verifiedRouteMatch     String? // MATCH | EXCEEDS

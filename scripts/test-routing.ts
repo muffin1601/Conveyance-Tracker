@@ -77,13 +77,14 @@ describe("coordinate validation", () => {
 describe("distance source labelling", () => {
   test("routed sources are road distances; fallbacks are not", () => {
     for (const s of ["OSRM", "CACHE", "GOOGLE"]) assert.equal(isRoadDistance(s), true, s);
-    for (const s of ["HAVERSINE", "MANUAL"]) assert.equal(isRoadDistance(s), false, s);
+    for (const s of ["HAVERSINE", "MANUAL", "VERIFIED_ROUTE"]) assert.equal(isRoadDistance(s), false, s);
   });
 
   test("every source has human wording, so no screen shows a raw enum", () => {
     assert.equal(distanceSourceLabel("OSRM"), "Road distance");
     assert.equal(distanceSourceLabel("HAVERSINE"), "Estimated");
     assert.equal(distanceSourceLabel("MANUAL"), "Entered by hand");
+    assert.equal(distanceSourceLabel("VERIFIED_ROUTE"), "Verified route");
   });
 });
 

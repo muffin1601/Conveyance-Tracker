@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { distanceDifference, getEffectiveTripDistance, verificationDecision } from "../src/lib/distanceCorrection";
-import { isRedundantVerifiedRouteCorrection } from "../src/lib/verifiedRouteMath";
+import {
+  applyVerifiedRouteDistance,
+  isRedundantVerifiedRouteCorrection,
+} from "../src/lib/verifiedRouteMath";
 
 test("difference is safe and uses the larger distance", () => {
   const r = distanceDifference(12.4, 18.6);
@@ -24,4 +27,31 @@ test("a verified distance may correct a recorded mismatch but duplicate matching
   assert.equal(isRedundantVerifiedRouteCorrection(12.5, 12.5, 12.5), true);
   assert.equal(isRedundantVerifiedRouteCorrection(12.5, 16, 12.5), false);
   assert.equal(isRedundantVerifiedRouteCorrection(8.5, 16, 12.5), false);
+});
+
+test("verified route memory auto-corrects only distances outside the configured tolerance", () => {
+  assert.deepEqual(
+    applyVerifiedRouteDistance(8.5, {
+      isVerified: true,
+      verifiedDistanceKm: 12.5,
+      exceedsTolerance: true,
+    }),
+    { distanceKm: 12.5, submittedDistanceKm: 8.5, autoCorrected: true },
+  );
+  assert.deepEqual(
+    applyVerifiedRouteDistance(12.4, {
+      isVerified: true,
+      verifiedDistanceKm: 12.5,
+      exceedsTolerance: false,
+    }),
+    { distanceKm: 12.4, submittedDistanceKm: null, autoCorrected: false },
+  );
+  assert.deepEqual(
+    applyVerifiedRouteDistance(8.5, {
+      isVerified: false,
+      verifiedDistanceKm: null,
+      exceedsTolerance: false,
+    }),
+    { distanceKm: 8.5, submittedDistanceKm: null, autoCorrected: false },
+  );
 });

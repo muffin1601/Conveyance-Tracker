@@ -270,6 +270,7 @@ async function TodaySummary() {
                     <DistanceCorrection
                       journeyId={journey.id}
                       recordedKm={journey.distanceKm}
+                      autoCorrectedFromKm={journey.submittedDistanceKm}
                       correction={journey.distanceCorrection}
                       lang={lang}
                       fromName={from}

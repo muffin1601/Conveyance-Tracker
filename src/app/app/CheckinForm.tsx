@@ -87,6 +87,8 @@ interface Preview {
     exceedsTolerance: boolean;
     differenceKm: number;
     toleranceKm: number;
+    submittedDistanceKm: number;
+    willAutoCorrect: boolean;
   } | null;
 }
 
@@ -972,7 +974,11 @@ export function CheckinForm({
                       straight-line estimate must never look the same. */}
                   {preview.source && preview.km > 0 && (
                     <div className="text-[11px] text-muted">
-                      {isRoadDistance(preview.source) ? t(lang, "roadDistance") : t(lang, "estimatedDistance")}
+                      {preview.source === "VERIFIED_ROUTE"
+                        ? t(lang, "verifiedRouteDistanceSource")
+                        : isRoadDistance(preview.source)
+                          ? t(lang, "roadDistance")
+                          : t(lang, "estimatedDistance")}
                     </div>
                   )}
                 </div>
@@ -994,7 +1000,7 @@ export function CheckinForm({
                 <div
                   className={cn(
                     "mt-3 rounded-lg border p-2.5 text-xs transition",
-                    preview.verifiedRoute.matchesWithinTolerance
+                    preview.verifiedRoute.matchesWithinTolerance || preview.verifiedRoute.willAutoCorrect
                       ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
                       : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
                   )}
@@ -1013,17 +1019,24 @@ export function CheckinForm({
                     <p className="mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400">
                       ✓ {t(lang, "routeVerifiedMatches")} (±{preview.verifiedRoute.toleranceKm} km tolerance)
                     </p>
+                  ) : preview.verifiedRoute.willAutoCorrect ? (
+                    <p className="mt-1.5 text-[11px] font-medium text-emerald-700 dark:text-emerald-400">
+                      {t(lang, "verifiedRouteAutoApplied", {
+                        submitted: km(preview.verifiedRoute.submittedDistanceKm),
+                        verified: km(preview.verifiedRoute.verifiedDistanceKm),
+                      })}
+                    </p>
                   ) : (
                     <div className="mt-1.5 space-y-1 text-[11px] text-amber-800 dark:text-amber-300">
                       <p className="font-semibold">
                         ⚠ {t(lang, "distanceDiscrepancyWarning")}:
                         <span className="ml-1 font-normal">
-                          Entered {preview.km.toFixed(1)} km vs verified {preview.verifiedRoute.verifiedDistanceKm} km
+                          Entered {preview.verifiedRoute.submittedDistanceKm.toFixed(1)} km vs verified {preview.verifiedRoute.verifiedDistanceKm} km
                           (Difference: {preview.verifiedRoute.differenceKm} km).
                         </span>
                       </p>
                       <p className="text-[10px] text-muted">
-                        Entry will be flagged for review. Your entered distance will not be overwritten.
+                        Entry will be flagged for review.
                       </p>
                     </div>
                   )}

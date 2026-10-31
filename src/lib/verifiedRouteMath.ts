@@ -62,3 +62,26 @@ export function isRedundantVerifiedRouteCorrection(
       .matchesWithinTolerance
   );
 }
+
+export function applyVerifiedRouteDistance(
+  submittedKm: number,
+  route: {
+    isVerified: boolean;
+    verifiedDistanceKm: number | null;
+    exceedsTolerance: boolean;
+  },
+): {
+  distanceKm: number;
+  submittedDistanceKm: number | null;
+  autoCorrected: boolean;
+} {
+  const verifiedDistanceKm =
+    route.isVerified && route.exceedsTolerance ? route.verifiedDistanceKm : null;
+  const autoCorrected = verifiedDistanceKm != null;
+
+  return {
+    distanceKm: verifiedDistanceKm ?? submittedKm,
+    submittedDistanceKm: autoCorrected ? submittedKm : null,
+    autoCorrected,
+  };
+}

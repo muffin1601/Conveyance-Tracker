@@ -21,8 +21,9 @@ export interface Coordinates {
  *   HAVERSINE straight line × a road factor — an ESTIMATE, used only when
  *             every routing provider was unreachable
  *   MANUAL    typed in by the employee; not measured at all
+ *   VERIFIED_ROUTE applied from permanent verified route memory
  */
-export type DistanceSource = "OSRM" | "CACHE" | "GOOGLE" | "HAVERSINE" | "MANUAL";
+export type DistanceSource = "OSRM" | "CACHE" | "GOOGLE" | "HAVERSINE" | "MANUAL" | "VERIFIED_ROUTE";
 
 /** The sources that represent a real measured road route. */
 const ROAD_SOURCES: ReadonlySet<string> = new Set<DistanceSource>(["OSRM", "CACHE", "GOOGLE"]);
@@ -46,6 +47,8 @@ export function distanceSourceLabel(source: string): string {
       return "Estimated";
     case "MANUAL":
       return "Entered by hand";
+    case "VERIFIED_ROUTE":
+      return "Verified route";
     default:
       return source;
   }

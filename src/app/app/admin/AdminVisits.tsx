@@ -25,9 +25,10 @@ interface Visit {
    */
   loginAt: string | null;
   distanceKm: number;
+  submittedDistanceKm?: number | null;
   /** True after an administrator-approved distance correction was applied. */
   distanceUpdated: boolean;
-  /** MATCH | EXCEEDS | null — snapshot vs verified route memory; never overwrites km. */
+  /** MATCH | EXCEEDS | null — snapshot of the pre-verification distance comparison. */
   verifiedRouteMatch?: string | null;
   verifiedDistanceKm?: number | null;
   verifiedDiscrepancyKm?: number | null;
@@ -276,7 +277,12 @@ export function AdminVisits({
                     {v.distanceUpdated && (
                       <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>
                     )}
-                    {v.verifiedRouteMatch === "EXCEEDS" && (
+                    {v.submittedDistanceKm != null && (
+                      <span className="block text-[11px] font-medium text-emerald-700">
+                        Auto-corrected from {km(v.submittedDistanceKm)} km using verified route
+                      </span>
+                    )}
+                    {v.verifiedRouteMatch === "EXCEEDS" && v.submittedDistanceKm == null && (
                       <span className="block text-[11px] font-medium text-amber-700">
                         vs verified {v.verifiedDistanceKm != null ? `${v.verifiedDistanceKm} km` : "route"}
                         {v.verifiedDiscrepancyKm != null ? ` (Δ ${v.verifiedDiscrepancyKm} km)` : ""}
@@ -288,7 +294,7 @@ export function AdminVisits({
                     {/* Only the exceptions are called out. Marking every routed
                         row "Road distance" would be noise on a dense table;
                         what a reviewer needs to spot is the row that ISN'T. */}
-                    {!isRoadDistance(v.distanceSource) && (
+                    {v.distanceSource !== "VERIFIED_ROUTE" && !isRoadDistance(v.distanceSource) && (
                       <span className="block text-[11px] font-normal text-amber-600">
                         {distanceSourceLabel(v.distanceSource)}
                       </span>

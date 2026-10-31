@@ -31,6 +31,10 @@ npm run db:migrate:verified-routes
 npm run db:generate
 ```
 
+The idempotent schema update adds `Journey.submittedDistanceKm`, which preserves
+the pre-correction value when an active verified route automatically corrects a
+future visit outside the configured tolerance. No existing journey is updated.
+
 To seed permanent route memory from historical **approved** corrections, first
 preview the routes that meet the configured threshold, then apply if the list
 looks correct:

@@ -3,4 +3,5 @@
 ALTER TABLE "Journey" ADD COLUMN IF NOT EXISTS "verifiedDistanceKm" DOUBLE PRECISION;
 ALTER TABLE "Journey" ADD COLUMN IF NOT EXISTS "verifiedDiscrepancyKm" DOUBLE PRECISION;
 ALTER TABLE "Journey" ADD COLUMN IF NOT EXISTS "verifiedRouteMatch" TEXT;
+ALTER TABLE "Journey" ADD COLUMN IF NOT EXISTS "submittedDistanceKm" DOUBLE PRECISION;
 CREATE INDEX IF NOT EXISTS "Journey_verifiedRouteMatch_idx" ON "Journey"("verifiedRouteMatch");

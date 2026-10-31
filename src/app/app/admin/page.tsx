@@ -161,6 +161,7 @@ export default async function AdminPage({
           // fallback for legs that pre-date it (see lib/utils#loginTimestamp).
           loginAt: loginTimestamp(j)?.toISOString() ?? null,
           distanceKm: j.distanceKm,
+          submittedDistanceKm: j.submittedDistanceKm,
           distanceUpdated: j.distanceUpdated,
           verifiedRouteMatch: j.verifiedRouteMatch,
           verifiedDistanceKm: j.verifiedDistanceKm,

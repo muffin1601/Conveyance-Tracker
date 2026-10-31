@@ -264,8 +264,10 @@ const DICT = {
   viewScreenshot: { en: "View screenshot", hi: "Screenshot देखें" },
   previouslyVerifiedRoute: { en: "Previously Verified Route", hi: "पहले से सत्यापित मार्ग" },
   verifiedDistance: { en: "Verified Distance", hi: "सत्यापित दूरी" },
+  verifiedRouteDistanceSource: { en: "Verified route", hi: "सत्यापित मार्ग" },
   routeVerifiedMatches: { en: "Matches verified route distance (no correction needed)", hi: "सत्यापित मार्ग दूरी से मेल खाता है (सुधार की आवश्यकता नहीं)" },
   distanceDiscrepancyWarning: { en: "Distance discrepancy detected", hi: "दूरी में अंतर पाया गया" },
+  verifiedRouteAutoApplied: { en: "Distance automatically corrected from {submitted} km to verified {verified} km. No correction request is needed.", hi: "दूरी अपने-आप {submitted} km से सत्यापित {verified} km कर दी गई। सुधार अनुरोध भेजने की आवश्यकता नहीं है।" },
   correctionReasonOptional: { en: "Reason for correction (optional)", hi: "सुधार का कारण (वैकल्पिक)" },
   correctionReasonPlaceholder: { en: "e.g. Detour due to road construction, client detour", hi: "उदा. सड़क बंद होने से चक्कर, ग्राहक से मिलना" },
 

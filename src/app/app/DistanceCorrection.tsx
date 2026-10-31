@@ -24,6 +24,7 @@ type Correction = {
 type Props = {
   journeyId: string;
   recordedKm: number;
+  autoCorrectedFromKm?: number | null;
   correction: Correction;
   lang?: Lang;
   fromName?: string;
@@ -40,6 +41,7 @@ type Props = {
 export function DistanceCorrection({
   journeyId,
   recordedKm,
+  autoCorrectedFromKm = null,
   correction,
   lang = DEFAULT_LANG,
   verifiedRoute,
@@ -175,6 +177,14 @@ export function DistanceCorrection({
             </span>
             <span className="text-muted">({t(lang, "routeVerifiedMatches")})</span>
           </div>
+          {autoCorrectedFromKm != null && (
+            <p className="mt-1 pl-5 text-emerald-800 dark:text-emerald-300">
+              {t(lang, "verifiedRouteAutoApplied", {
+                submitted: autoCorrectedFromKm.toFixed(2),
+                verified: recordedKm.toFixed(2),
+              })}
+            </p>
+          )}
         </div>
       )}
 

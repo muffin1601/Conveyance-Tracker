@@ -15,6 +15,7 @@ import { purgeBillObject, auditBill } from "./bills";
 import { todayKey } from "@/lib/utils";
 import { TRAVEL_MODES, visitAmount, type TravelMode } from "@/lib/travel";
 import { compareSubmittedToVerifiedRoute } from "@/lib/verifiedRoutes";
+import { applyVerifiedRouteDistance } from "@/lib/verifiedRouteMath";
 
 // A destination is one of three kinds:
 //  - SITE:   a master Site from the configured list        (locationType MASTER)
@@ -504,6 +505,8 @@ export interface VisitPreview {
     exceedsTolerance: boolean;
     differenceKm: number;
     toleranceKm: number;
+    submittedDistanceKm: number;
+    willAutoCorrect: boolean;
   } | null;
 }
 
@@ -538,12 +541,11 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
     }
 
     const dist = await computeLeg(from, to, manualDistanceKm);
-    const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
-
-    // Check whether a permanent verified distance exists for this route
+    const effectiveKm = dist.distanceKm;
     let verifiedRouteInfo: VisitPreview["verifiedRoute"] = null;
-    const effectiveKm = typeof manualDistanceKm === "number" && manualDistanceKm > 0 ? manualDistanceKm : dist.distanceKm;
     const verifiedLookup = await compareSubmittedToVerifiedRoute(from.name, to.name, effectiveKm);
+    const appliedDistance = applyVerifiedRouteDistance(effectiveKm, verifiedLookup);
+    const amount = legAmount(appliedDistance.distanceKm, mode, fareActual, settings.rates);
     if (verifiedLookup.isVerified && verifiedLookup.verifiedDistanceKm != null) {
       verifiedRouteInfo = {
         isVerified: true,
@@ -553,19 +555,23 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
         exceedsTolerance: verifiedLookup.exceedsTolerance,
         differenceKm: verifiedLookup.differenceKm,
         toleranceKm: verifiedLookup.toleranceKm,
+        submittedDistanceKm: effectiveKm,
+        willAutoCorrect: appliedDistance.autoCorrected,
       };
     }
 
     return ok({
       fromName: from.name,
       toName: to.name,
-      km: dist.distanceKm,
+      km: appliedDistance.distanceKm,
       amount,
       durationMin: dist.durationMin,
-      source: dist.source,
+      source: appliedDistance.autoCorrected ? "VERIFIED_ROUTE" : dist.source,
       measuredKm: dist.measuredKm,
       manualNeedsReason:
-        typeof manualDistanceKm === "number" && manualNeedsReason(manualDistanceKm, dist.measuredKm),
+        !appliedDistance.autoCorrected &&
+        typeof manualDistanceKm === "number" &&
+        manualNeedsReason(manualDistanceKm, dist.measuredKm),
       originMismatchM: context.originMismatchM,
       tripNumber: sequence + 1,
       alreadyHere: false,
@@ -745,13 +751,19 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
   }
 
   const dist = await computeLeg(from, to, manualDistanceKm);
+  const verifiedComparison = await compareSubmittedToVerifiedRoute(from.name, to.name, dist.distanceKm);
+  const appliedDistance = applyVerifiedRouteDistance(dist.distanceKm, verifiedComparison);
 
   // A typed distance that disagrees materially with the measured route needs a
   // reason. Enforced HERE and not only in the form, because the form is not the
   // only way in: an offline device queues the payload and replays it later, and
   // the queue must not be a way around the rule. REJECTED (not a retry) — the
   // device cannot fix this by trying again, a person has to.
-  if (typeof manualDistanceKm === "number" && manualNeedsReason(manualDistanceKm, dist.measuredKm)) {
+  if (
+    !appliedDistance.autoCorrected &&
+    typeof manualDistanceKm === "number" &&
+    manualNeedsReason(manualDistanceKm, dist.measuredKm)
+  ) {
     if (!manualReason) {
       return {
         status: "REJECTED",
@@ -762,17 +774,14 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
     }
   }
 
-  const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
-
-  // Snapshot verified-route memory for review flags. Never overwrite distanceKm.
-  const verifiedComparison = await compareSubmittedToVerifiedRoute(from.name, to.name, dist.distanceKm);
+  const amount = legAmount(appliedDistance.distanceKm, mode, fareActual, settings.rates);
 
   // Two tabs (or a tab and a retry) can reach this line concurrently with the
   // same key — the pre-flight lookup above cannot see a row that has not been
   // committed yet. The unique index is the real arbiter; a collision here
   // means the other writer won, so the visit exists and this is a duplicate.
-  const created = await prisma.journey
-    .create({
+  const created = await prisma.$transaction(async (tx) => {
+    const journey = await tx.journey.create({
       data: {
         clientVisitId,
         employeeId,
@@ -798,14 +807,15 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         // Only meaningful on a manual leg, and only when one was asked for.
         manualReason: dist.source === "MANUAL" ? (manualReason ?? null) : null,
         sequence,
-        distanceKm: dist.distanceKm,
+        distanceKm: appliedDistance.distanceKm,
+        submittedDistanceKm: appliedDistance.submittedDistanceKm,
         verifiedDistanceKm: verifiedComparison.verifiedDistanceKm,
         verifiedDiscrepancyKm: verifiedComparison.isVerified ? verifiedComparison.differenceKm : null,
         verifiedRouteMatch: verifiedComparison.verifiedRouteMatch,
         roadKm: dist.roadKm,
         haversineKm: dist.haversineKm,
         durationMin: dist.durationMin,
-        source: dist.source,
+        source: appliedDistance.autoCorrected ? "VERIFIED_ROUTE" : dist.source,
         vehicleType: mode,
         amount,
         // Proof of presence, exactly as the server measured it.
@@ -816,7 +826,29 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         gpsDistanceM: gpsCheck.distanceM,
         gpsRadiusM: gpsCheck.radiusM,
       },
-    })
+    });
+
+    if (appliedDistance.autoCorrected) {
+      await tx.auditLog.create({
+        data: {
+          action: "AUTO_APPLY_VERIFIED_ROUTE_DISTANCE",
+          entity: "Journey",
+          entityId: journey.id,
+          meta: JSON.stringify({
+            employeeId,
+            routeKey: verifiedComparison.routeKey,
+            submittedDistanceKm: appliedDistance.submittedDistanceKm,
+            verifiedDistanceKm: appliedDistance.distanceKm,
+            differenceKm: verifiedComparison.differenceKm,
+            toleranceKm: verifiedComparison.toleranceKm,
+            tolerancePercent: verifiedComparison.tolerancePercent,
+          }),
+        },
+      });
+    }
+
+    return journey;
+  })
     .catch((e: unknown) => {
       if (isUniqueViolation(e, "clientVisitId")) return null;
       throw e;

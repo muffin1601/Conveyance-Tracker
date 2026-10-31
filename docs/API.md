@@ -41,14 +41,18 @@ Errors thrown as `Error(message)`; surfaced verbatim in the UI
 |--------|------|--------|
 | `submitDistanceCorrection` | Employee who owns the journey | Records the submitted distance, evidence, reason, and pending review status |
 | `reviewDistanceCorrection` | Admin PIN gate | Approves or rejects once; approval updates the journey and evaluates the approved-route threshold |
-| `checkRouteVerifiedDistanceAction` | Route lookup | Looks up active directional route memory; it never changes the submitted distance |
+| `checkRouteVerifiedDistanceAction` | Route lookup | Looks up active directional route memory |
 | `manuallyVerifyRouteAction` / `updateVerifiedDistanceAction` | Admin PIN gate | Creates or updates route memory with a transactional audit record |
 | `setVerifiedRouteStatusAction` | Admin PIN gate | Activates, disables, or archives a route with an audit record |
 | `getRouteCorrectionHistoryAction` / `getCorrectionIntelligenceDataAction` | Admin PIN gate | Returns correction history, route metrics, and review flags |
 
 Only approved corrections count toward automatic verification. Route memory is
-not claim approval; journeys keep their submitted distance snapshot and claims
-continue through their existing approval workflow.
+not claim approval. For future visits only, an active verified route whose
+submitted/calculated distance exceeds the configured tolerance is automatically
+applied at log time. The pre-correction distance is kept in
+`Journey.submittedDistanceKm` and an audit record is created in the same
+transaction. Distances within tolerance and existing journeys are unchanged;
+claims continue through their existing approval workflow.
 
 ## HTTP routes
 
