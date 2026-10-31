@@ -2,7 +2,8 @@
 
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
-import { prisma } from "@/lib/prisma";
+import { prisma, WRITE_TX } from "@/lib/prisma";
+import { attempt, ok, fail, UserError, type ActionResult } from "@/lib/result";
 import { requireUser } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { buildBillPath, createSignedDownloadUrl, createSignedUploadUrl, isUploadConfigured } from "@/lib/storage";
@@ -133,132 +134,148 @@ export async function getCorrectionScreenshot(id: string) {
   return createSignedDownloadUrl(row.screenshotPath, 600);
 }
 
-export async function reviewDistanceCorrection(input: { id: string; decision: "APPROVED" | "REJECTED"; finalDistanceKm?: number; note?: string }) {
-  if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
-  const user = await requireUser().catch(() => null);
-  const final = input.finalDistanceKm;
-  if (input.decision === "APPROVED" && (!Number.isFinite(final) || !final || final <= 0 || final > DISTANCE_CORRECTION_CONFIG.maxTripKm)) throw new Error("Enter a valid approved distance.");
-  const settings = input.decision === "APPROVED" ? await getSettings() : null;
-
-  const result = await prisma.$transaction(async (tx) => {
-    const correction = await tx.distanceCorrection.findUnique({
-      where: { id: input.id },
-      include: { journey: { select: { id: true, distanceKm: true, amount: true, vehicleType: true, fromName: true, toName: true } } },
-    });
-    if (!correction || !["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"].includes(correction.status)) {
-      throw new Error("This correction was already reviewed.");
+export async function reviewDistanceCorrection(input: {
+  id: string;
+  decision: "APPROVED" | "REJECTED";
+  finalDistanceKm?: number;
+  note?: string;
+}): Promise<
+  ActionResult<{
+    journeyId: string;
+    originalDistanceKm: number;
+    amount: number;
+    thresholdMet: boolean;
+    approvalCount: number;
+    verifiedDistanceKm: number | null;
+  }>
+> {
+  return attempt(async () => {
+    if (!(await isSettingsUnlocked())) return fail("Admin is locked. Enter the PIN again and retry.");
+    const user = await requireUser().catch(() => null);
+    const final = input.finalDistanceKm;
+    if (input.decision === "APPROVED" && (!Number.isFinite(final) || !final || final <= 0 || final > DISTANCE_CORRECTION_CONFIG.maxTripKm)) {
+      return fail("Enter a valid approved distance.");
     }
+    const settings = input.decision === "APPROVED" ? await getSettings() : null;
 
-    const reviewer = user
-      ? await tx.user.findUnique({ where: { id: user.id }, select: { id: true } })
-      : null;
-    const reviewerId = reviewer?.id ?? null;
-    const reviewedAt = new Date();
-    const { routeKey: derivedRouteKey } = buildRouteKey(
-      correction.journey.fromName ?? "",
-      correction.journey.toName ?? ""
-    );
-    if (input.decision === "APPROVED" && derivedRouteKey) {
-      await tx.$queryRaw`
-        WITH route_lock AS MATERIALIZED (
-          SELECT pg_advisory_xact_lock(hashtext(${derivedRouteKey}))
-        )
-        SELECT 1::int AS locked FROM route_lock
-      `;
-    }
+    let result;
+    try {
+      result = await prisma.$transaction(async (tx) => {
+        const correction = await tx.distanceCorrection.findUnique({
+          where: { id: input.id },
+          include: { journey: { select: { id: true, distanceKm: true, amount: true, vehicleType: true, fromName: true, toName: true } } },
+        });
+        if (!correction || !["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"].includes(correction.status)) {
+          throw new UserError("This correction was already reviewed.");
+        }
 
-    const updatedCorrection = await tx.distanceCorrection.updateMany({
-      where: {
-        id: correction.id,
-        status: { in: ["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"] },
-      },
-      data: {
-        status: input.decision,
-        finalDistanceKm: input.decision === "APPROVED" ? final! : null,
-        adminNote: input.note?.trim() || null,
-        reviewedAt,
-        reviewedById: reviewerId,
-        // Backfill routeKey for legacy rows so threshold lookups stay indexed
-        ...(derivedRouteKey ? { routeKey: derivedRouteKey } : {}),
-      },
-    });
-    if (updatedCorrection.count !== 1) {
-      throw new Error("This correction was already reviewed.");
-    }
+        const reviewer = user
+          ? await tx.user.findUnique({ where: { id: user.id }, select: { id: true } })
+          : null;
+        const reviewerId = reviewer?.id ?? null;
+        const reviewedAt = new Date();
+        const { routeKey: derivedRouteKey } = buildRouteKey(
+          correction.journey.fromName ?? "",
+          correction.journey.toName ?? ""
+        );
 
-    if (input.decision === "APPROVED") {
-      // Flat and actual-fare modes are not distance-priced. Preserve their
-      // amount, while recalculating distance-priced trips at the configured rate.
-      const vehicleType = correction.journey.vehicleType as VehicleType;
-      const amount = ["BIKE", "CAR"].includes(vehicleType)
-        ? computeLegAmount(final!, vehicleType, settings!.rates)
-        : correction.journey.amount;
-      await tx.journey.update({
-        where: { id: correction.journey.id },
-        data: { distanceKm: final!, amount, distanceUpdated: true, distanceUpdatedAt: reviewedAt },
-      });
+        const updatedCorrection = await tx.distanceCorrection.updateMany({
+          where: {
+            id: correction.id,
+            status: { in: ["PENDING", "AUTO_VERIFIED", "MANUAL_REVIEW"] },
+          },
+          data: {
+            status: input.decision,
+            finalDistanceKm: input.decision === "APPROVED" ? final! : null,
+            adminNote: input.note?.trim() || null,
+            reviewedAt,
+            reviewedById: reviewerId,
+            ...(derivedRouteKey ? { routeKey: derivedRouteKey } : {}),
+          },
+        });
+        if (updatedCorrection.count !== 1) {
+          throw new UserError("This correction was already reviewed.");
+        }
 
-      // Automatic Frequent Correction Detection & Permanent Distance Correction Memory
-      const verifiedUpdate = await processApprovedCorrection(correction.id, tx);
+        if (input.decision === "APPROVED") {
+          const vehicleType = correction.journey.vehicleType as VehicleType;
+          const amount = ["BIKE", "CAR"].includes(vehicleType)
+            ? computeLegAmount(final!, vehicleType, settings!.rates)
+            : correction.journey.amount;
+          await tx.journey.update({
+            where: { id: correction.journey.id },
+            data: { distanceKm: final!, amount, distanceUpdated: true, distanceUpdatedAt: reviewedAt },
+          });
 
-      const result = {
-        journeyId: correction.journey.id,
-        originalDistanceKm: correction.journey.distanceKm,
-        amount,
-        thresholdMet: verifiedUpdate.thresholdMet,
-        approvalCount: verifiedUpdate.approvalCount,
-        verifiedDistanceKm: verifiedUpdate.verifiedDistanceKm,
-      };
-      await tx.auditLog.create({
-        data: {
-          userId: reviewerId,
-          action: input.decision,
-          entity: "DistanceCorrection",
-          entityId: input.id,
-          meta: JSON.stringify({
-            journeyId: result.journeyId,
-            originalDistanceKm: result.originalDistanceKm,
-            finalDistanceKm: final,
-            amount: result.amount,
-            thresholdMet: result.thresholdMet,
-            approvalCount: result.approvalCount,
-            verifiedDistanceKm: result.verifiedDistanceKm,
-          }),
-        },
-      });
-      return result;
-    }
-    const result = {
-      journeyId: correction.journey.id,
-      originalDistanceKm: correction.journey.distanceKm,
-      amount: correction.journey.amount,
-      thresholdMet: false,
-      approvalCount: 0,
-      verifiedDistanceKm: null,
-    };
-    await tx.auditLog.create({
-      data: {
-        userId: reviewerId,
-        action: input.decision,
-        entity: "DistanceCorrection",
-        entityId: input.id,
-        meta: JSON.stringify({
-          journeyId: result.journeyId,
-          originalDistanceKm: result.originalDistanceKm,
-          finalDistanceKm: null,
-          amount: result.amount,
+          const verifiedUpdate = await processApprovedCorrection(correction.id, tx);
+
+          const approved = {
+            journeyId: correction.journey.id,
+            originalDistanceKm: correction.journey.distanceKm,
+            amount,
+            thresholdMet: verifiedUpdate.thresholdMet,
+            approvalCount: verifiedUpdate.approvalCount,
+            verifiedDistanceKm: verifiedUpdate.verifiedDistanceKm,
+          };
+          await tx.auditLog.create({
+            data: {
+              userId: reviewerId,
+              action: input.decision,
+              entity: "DistanceCorrection",
+              entityId: input.id,
+              meta: JSON.stringify({
+                journeyId: approved.journeyId,
+                originalDistanceKm: approved.originalDistanceKm,
+                finalDistanceKm: final,
+                amount: approved.amount,
+                thresholdMet: approved.thresholdMet,
+                approvalCount: approved.approvalCount,
+                verifiedDistanceKm: approved.verifiedDistanceKm,
+              }),
+            },
+          });
+          return approved;
+        }
+        const rejected = {
+          journeyId: correction.journey.id,
+          originalDistanceKm: correction.journey.distanceKm,
+          amount: correction.journey.amount,
           thresholdMet: false,
           approvalCount: 0,
-          verifiedDistanceKm: null,
-        }),
-      },
-    });
-    return result;
-  });
+          verifiedDistanceKm: null as number | null,
+        };
+        await tx.auditLog.create({
+          data: {
+            userId: reviewerId,
+            action: input.decision,
+            entity: "DistanceCorrection",
+            entityId: input.id,
+            meta: JSON.stringify({
+              journeyId: rejected.journeyId,
+              originalDistanceKm: rejected.originalDistanceKm,
+              finalDistanceKm: null,
+              amount: rejected.amount,
+              thresholdMet: false,
+              approvalCount: 0,
+              verifiedDistanceKm: null,
+            }),
+          },
+        });
+        return rejected;
+      }, WRITE_TX);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "";
+      if (error instanceof UserError) return fail(error.message);
+      if (/transaction already closed|expired transaction|timed out/i.test(message)) {
+        return fail("Saving this approval took too long. Please try again.");
+      }
+      throw error;
+    }
 
-  revalidatePath("/app");
-  revalidatePath("/app/admin");
-  return { ok: true, ...result };
+    revalidatePath("/app");
+    revalidatePath("/app/admin");
+    return ok(result);
+  }, "reviewDistanceCorrection");
 }
 
 // ──────────────────────────────────────────────────────────────

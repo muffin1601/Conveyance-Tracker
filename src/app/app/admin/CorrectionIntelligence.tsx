@@ -258,9 +258,13 @@ export function CorrectionIntelligence({
           decision,
           finalDistanceKm: decision === "APPROVED" ? row.submitted : undefined,
         });
-        if (res.thresholdMet) {
+        if (!res.ok) {
+          setMessage({ text: res.error, ok: false });
+          return;
+        }
+        if (res.data.thresholdMet) {
           setMessage({
-            text: `Correction approved! Frequent correction threshold met: Route permanently saved with verified distance of ${res.verifiedDistanceKm} KM.`,
+            text: `Correction approved! Frequent correction threshold met: Route permanently saved with verified distance of ${res.data.verifiedDistanceKm} KM.`,
             ok: true,
           });
         } else {

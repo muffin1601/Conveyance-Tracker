@@ -1,4 +1,4 @@
-import { prisma } from "./prisma";
+import { prisma, WRITE_TX } from "./prisma";
 import type { VerifiedRouteDistance } from "@prisma/client";
 import { normalizeLocationName, buildRouteKey } from "./locationNormalizer";
 import { audit } from "./audit";
@@ -25,12 +25,7 @@ type RouteTransactionClient = Parameters<Parameters<typeof prisma.$transaction>[
 type RouteDbClient = typeof prisma | RouteTransactionClient;
 
 async function lockRoute(db: RouteTransactionClient, routeKey: string) {
-  await db.$queryRaw`
-    WITH route_lock AS MATERIALIZED (
-      SELECT pg_advisory_xact_lock(hashtext(${routeKey}))
-    )
-    SELECT 1::int AS locked FROM route_lock
-  `;
+  await db.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${routeKey}::text))`;
 }
 
 const SETTING_KEY = "verified_route_config";
@@ -214,7 +209,7 @@ async function loadApprovedCorrectionsForRoute(
   db: Parameters<Parameters<typeof prisma.$transaction>[0]>[0] | typeof prisma,
   routeKey: string
 ) {
-  const keyed = await db.distanceCorrection.findMany({
+  return db.distanceCorrection.findMany({
     where: {
       status: "APPROVED",
       finalDistanceKm: { not: null },
@@ -222,27 +217,6 @@ async function loadApprovedCorrectionsForRoute(
     },
     select: { id: true, finalDistanceKm: true },
   });
-
-  const knownIds = new Set(keyed.map((c) => c.id));
-  const legacy = await db.distanceCorrection.findMany({
-    where: {
-      status: "APPROVED",
-      finalDistanceKm: { not: null },
-      OR: [{ routeKey: null }, { routeKey: "" }],
-    },
-    select: {
-      id: true,
-      finalDistanceKm: true,
-      journey: { select: { fromName: true, toName: true } },
-    },
-  });
-
-  const extra = legacy.filter((c) => {
-    if (knownIds.has(c.id)) return false;
-    return buildRouteKey(c.journey.fromName ?? "", c.journey.toName ?? "").routeKey === routeKey;
-  });
-
-  return [...keyed, ...extra];
 }
 
 function computeCanonicalDistance(distances: number[]): number {
@@ -272,7 +246,7 @@ export async function processApprovedCorrection(
   verifiedRoute: VerifiedRouteDistance | null;
 }> {
   if (!txClient) {
-    return prisma.$transaction((tx) => processApprovedCorrection(correctionId, tx));
+    return prisma.$transaction((tx) => processApprovedCorrection(correctionId, tx), WRITE_TX);
   }
   const db = txClient;
 
@@ -537,7 +511,7 @@ export async function manuallyVerifyRoute(input: {
       },
     });
     return { record, existed: false };
-  });
+  }, WRITE_TX);
   const { record, existed } = result;
 
   await audit({
@@ -603,7 +577,7 @@ export async function updateVerifiedDistance(input: {
       },
     });
     return { existing, updated };
-  });
+  }, WRITE_TX);
 
   await audit({
     userId: input.adminUserId ?? null,
@@ -659,7 +633,7 @@ export async function setVerifiedRouteStatus(input: {
       },
     });
     return { existing, updated };
-  });
+  }, WRITE_TX);
 
   await audit({
     userId: input.adminUserId ?? null,
