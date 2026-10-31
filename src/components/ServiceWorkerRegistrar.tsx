@@ -14,6 +14,24 @@ import { useEffect } from "react";
 export function ServiceWorkerRegistrar() {
   useEffect(() => {
     if (!("serviceWorker" in navigator)) return;
+    if (process.env.NODE_ENV === "development") {
+      void navigator.serviceWorker
+        .getRegistrations()
+        .then(async (registrations) => {
+          const appRegistrations = registrations.filter((registration) =>
+            [registration.installing, registration.waiting, registration.active].some(
+              (worker) => worker?.scriptURL.endsWith("/sw.js"),
+            ),
+          );
+          await Promise.all(appRegistrations.map((registration) => registration.unregister()));
+          await window.caches.delete("watcon-v1");
+        })
+        .catch((error: unknown) => {
+          console.error("Failed to disable the app service worker in development.", error);
+        });
+      return;
+    }
+
     // Registration competes with the app's own first data fetches; waiting for
     // load keeps it off the critical path.
     const register = () => void navigator.serviceWorker.register("/sw.js").catch(() => {});
