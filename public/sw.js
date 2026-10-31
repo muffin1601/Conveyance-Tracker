@@ -1,5 +1,5 @@
 // Watcon Tracker service worker — app-shell caching + offline fallback.
-const CACHE = "watcon-v1";
+const CACHE = "watcon-v2";
 const SHELL = ["/", "/app", "/offline", "/manifest.webmanifest"];
 
 self.addEventListener("install", (e) => {
@@ -43,6 +43,16 @@ self.addEventListener("fetch", (event) => {
   // Only cache this origin's own assets. Third-party responses are often
   // opaque (status 0), which `cache.put` also rejects.
   if (url.origin !== self.location.origin) return;
+
+  // Next.js assets and React Server Component payloads are deployment-specific.
+  // Serving a cached payload from an older deployment can submit obsolete
+  // Server Action IDs and make otherwise valid actions fail with HTTP 500.
+  if (
+    url.pathname.startsWith("/_next/") ||
+    url.pathname === "/sw.js" ||
+    request.headers.has("rsc") ||
+    url.searchParams.has("_rsc")
+  ) return;
 
   if (url.pathname.startsWith("/api")) return; // always network for APIs
 
