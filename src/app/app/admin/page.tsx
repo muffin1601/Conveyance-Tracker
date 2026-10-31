@@ -11,7 +11,8 @@ import { getActiveEmployees } from "@/lib/masterData";
 import { legToAddress, legToName } from "@/lib/journeyEndpoint";
 import { isSettingsUnlocked } from "@/app/actions/settings";
 import { PinGate } from "@/components/PinGate";
-import { DistanceCorrections } from "./DistanceCorrections";
+import { CorrectionIntelligence } from "./CorrectionIntelligence";
+import { getCorrectionIntelligenceData } from "@/lib/verifiedRoutes";
 import { WorkspaceTabs } from "@/components/WorkspaceTabs";
 import { TablePagination } from "./TablePagination";
 
@@ -52,7 +53,7 @@ export default async function AdminPage({
   const showStats = tab === "overview" || tab === "entries" || tab === "expenses";
   // Fetch full records only for the visible workspace tab. Counts and totals
   // stay available for badges, but navigating no longer downloads every table.
-  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations, customLocationCount, corrections, correctionCount] =
+  const [empCount, siteCount, journeys, journeyStats, miscExpenses, miscStats, customLocations, customLocationCount, corrections, correctionCount, intelligenceData] =
     await Promise.all([
       showStats ? prisma.employee.count({ where: { status: "ACTIVE", deletedAt: null } }) : Promise.resolve(0),
       showStats ? prisma.site.count({ where: { status: "ACTIVE", isOffice: false, deletedAt: null } }) : Promise.resolve(0),
@@ -96,6 +97,7 @@ export default async function AdminPage({
       prisma.userCustomLocation.count({ where: { status: "ACTIVE" } }),
       tab === "corrections" ? prisma.distanceCorrection.findMany({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } }, orderBy: { submittedAt: "desc" }, take: 200, include: { employee: { select: { name: true } }, journey: { select: { workDate: true, fromName: true, toName: true } } } }) : Promise.resolve([]),
       prisma.distanceCorrection.count({ where: { status: { in: ["PENDING", "MANUAL_REVIEW", "AUTO_VERIFIED"] } } }),
+      tab === "corrections" ? getCorrectionIntelligenceData({ employeeId, period }) : Promise.resolve(null),
     ]);
 
   const convAmount = journeyStats._sum.amount ?? 0;
@@ -160,6 +162,9 @@ export default async function AdminPage({
           loginAt: loginTimestamp(j)?.toISOString() ?? null,
           distanceKm: j.distanceKm,
           distanceUpdated: j.distanceUpdated,
+          verifiedRouteMatch: j.verifiedRouteMatch,
+          verifiedDistanceKm: j.verifiedDistanceKm,
+          verifiedDiscrepancyKm: j.verifiedDiscrepancyKm,
           amount: j.amount,
           mode: j.vehicleType,
           distanceSource: j.source,
@@ -188,7 +193,25 @@ export default async function AdminPage({
         }))}
         total={miscAmount}
       /><TablePagination total={miscTotalCount} page={requestedPage} size={size} /></>}
-      {tab === "corrections" && <DistanceCorrections rows={corrections.map(c => ({ id: c.id, employee: c.employee.name, date: c.journey.workDate, from: c.journey.fromName ?? "Start", to: c.journey.toName ?? "Destination", original: c.originalDistanceKm, submitted: c.submittedDistanceKm, status: c.status }))} />}
+      {tab === "corrections" && intelligenceData && (
+        <CorrectionIntelligence
+          pendingCount={correctionCount}
+          pendingRows={corrections.map((c) => ({
+            id: c.id,
+            employeeId: c.employeeId,
+            employee: c.employee.name,
+            date: c.journey.workDate,
+            from: c.journey.fromName ?? "Start",
+            to: c.journey.toName ?? "Destination",
+            original: c.originalDistanceKm,
+            submitted: c.submittedDistanceKm,
+            status: c.status,
+            userReason: c.userReason,
+          }))}
+          intelligence={intelligenceData}
+          employees={employees.map((e) => ({ id: e.id, name: e.name }))}
+        />
+      )}
 
       {tab === "locations" && <LocationApprovals
         locations={customLocations.map((l) => ({

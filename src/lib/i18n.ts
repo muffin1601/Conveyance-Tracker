@@ -262,6 +262,12 @@ const DICT = {
   correctionVerified: { en: "Distance corrected", hi: "दूरी सुधार दी गई" },
   correctionNotApproved: { en: "Correction not approved", hi: "सुधार स्वीकृत नहीं हुआ" },
   viewScreenshot: { en: "View screenshot", hi: "Screenshot देखें" },
+  previouslyVerifiedRoute: { en: "Previously Verified Route", hi: "पहले से सत्यापित मार्ग" },
+  verifiedDistance: { en: "Verified Distance", hi: "सत्यापित दूरी" },
+  routeVerifiedMatches: { en: "Matches verified route distance (no correction needed)", hi: "सत्यापित मार्ग दूरी से मेल खाता है (सुधार की आवश्यकता नहीं)" },
+  distanceDiscrepancyWarning: { en: "Distance discrepancy detected", hi: "दूरी में अंतर पाया गया" },
+  correctionReasonOptional: { en: "Reason for correction (optional)", hi: "सुधार का कारण (वैकल्पिक)" },
+  correctionReasonPlaceholder: { en: "e.g. Detour due to road construction, client detour", hi: "उदा. सड़क बंद होने से चक्कर, ग्राहक से मिलना" },
 
   // ── Misc expenses ────────────────────────────────────────────────
   employee: { en: "Employee", hi: "कर्मचारी" },

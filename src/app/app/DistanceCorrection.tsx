@@ -9,6 +9,7 @@ import {
 } from "@/app/actions/distanceCorrections";
 import { errorMessage } from "@/lib/errors";
 import { t, DEFAULT_LANG, type Lang } from "@/lib/i18n";
+import { calculateDistanceDiscrepancy } from "@/lib/verifiedRouteMath";
 
 type Correction = {
   id: string;
@@ -22,16 +23,43 @@ type Props = {
   recordedKm: number;
   correction: Correction;
   lang?: Lang;
+  fromName?: string;
+  toName?: string;
+  verifiedRoute?: {
+    isVerified: boolean;
+    verifiedDistanceKm: number;
+    approvalCount?: number;
+    toleranceKm?: number;
+    tolerancePercent?: number;
+  } | null;
 };
 
-export function DistanceCorrection({ journeyId, recordedKm, correction, lang = DEFAULT_LANG }: Props) {
+export function DistanceCorrection({
+  journeyId,
+  recordedKm,
+  correction,
+  lang = DEFAULT_LANG,
+  verifiedRoute,
+}: Props) {
   const [open, setOpen] = useState(false);
   const [submitted, setSubmitted] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [value, setValue] = useState("");
+  const [reason, setReason] = useState("");
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
   const input = useRef<HTMLInputElement>(null);
+
+  // Check if route has an active verified distance and if trip distance matches it
+  const verifiedMatch = verifiedRoute?.isVerified
+    ? calculateDistanceDiscrepancy(
+        recordedKm,
+        verifiedRoute.verifiedDistanceKm,
+        verifiedRoute.toleranceKm,
+        verifiedRoute.tolerancePercent
+      )
+    : null;
+  const isMatchWithVerified = Boolean(verifiedMatch?.matchesWithinTolerance);
 
   if (correction) {
     const status = ["APPROVED", "AUTO_VERIFIED"].includes(correction.status)
@@ -104,6 +132,7 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
             type: file.type as "image/jpeg" | "image/png" | "image/webp",
             size: file.size,
           },
+          reason: reason.trim() || undefined,
         });
         setSubmitted(true);
       } catch (cause) {
@@ -114,28 +143,69 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
 
   return (
     <div className="mt-2">
-      <button
-        type="button"
-        className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5 text-left transition hover:border-brand hover:bg-brand/10 focus:outline-none focus:ring-2 focus:ring-brand/40"
-        onClick={() => {
-          setOpen(true);
-          setError("");
-        }}
-        aria-expanded={open}
-      >
-        <span className="flex min-w-0 items-center gap-2">
-          <span className="rounded-full bg-brand p-1.5 text-white">
-            <PencilLine className="h-3.5 w-3.5" />
+      {/* If route is already verified and matches recorded distance within tolerance */}
+      {isMatchWithVerified && !open && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-xs">
+          <div className="flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+            <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" />
+            <span>
+              <strong>{t(lang, "previouslyVerifiedRoute")}:</strong> {verifiedRoute?.verifiedDistanceKm} km
+            </span>
+            <span className="text-muted">({t(lang, "routeVerifiedMatches")})</span>
+          </div>
+          <button
+            type="button"
+            className="text-[11px] text-brand underline"
+            onClick={() => {
+              setOpen(true);
+              setError("");
+            }}
+          >
+            {t(lang, "correctDistance")}
+          </button>
+        </div>
+      )}
+
+      {verifiedRoute?.isVerified && verifiedMatch?.exceedsTolerance && !open && (
+        <div className="mb-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-amber-900 dark:text-amber-200">
+          <strong>{t(lang, "previouslyVerifiedRoute")}</strong>
+          {" · "}
+          {t(lang, "verifiedDistance")}: {verifiedRoute.verifiedDistanceKm} km
+          {" · "}
+          Recorded: {recordedKm.toFixed(2)} km
+          {" · "}
+          Diff: {verifiedMatch.differenceKm} km
+        </div>
+      )}
+
+      {(!isMatchWithVerified || open) && !open && (
+        <button
+          type="button"
+          className="flex min-h-11 w-full items-center justify-between gap-2 rounded-lg border border-brand/30 bg-brand/5 px-3 py-2.5 text-left transition hover:border-brand hover:bg-brand/10 focus:outline-none focus:ring-2 focus:ring-brand/40"
+          onClick={() => {
+            setOpen(true);
+            setError("");
+          }}
+          aria-expanded={open}
+        >
+          <span className="flex min-w-0 items-center gap-2">
+            <span className="rounded-full bg-brand p-1.5 text-white">
+              <PencilLine className="h-3.5 w-3.5" />
+            </span>
+            <span className="min-w-0">
+              <span className="block text-sm font-semibold text-brand">{t(lang, "correctDistance")}</span>
+              <span className="block text-xs leading-snug text-muted">
+                {verifiedRoute?.isVerified
+                  ? `${t(lang, "previouslyVerifiedRoute")}: ${verifiedRoute.verifiedDistanceKm} km`
+                  : t(lang, "correctDistanceHint")}
+              </span>
+            </span>
           </span>
-          <span className="min-w-0">
-            <span className="block text-sm font-semibold text-brand">{t(lang, "correctDistance")}</span>
-            <span className="block text-xs leading-snug text-muted">{t(lang, "correctDistanceHint")}</span>
+          <span className="hidden shrink-0 text-xs font-medium text-brand sm:inline">
+            {lang === "hi" ? "सुधारें →" : "Fix it →"}
           </span>
-        </span>
-        <span className="hidden shrink-0 text-xs font-medium text-brand sm:inline">
-          {lang === "hi" ? "सुधारें →" : "Fix it →"}
-        </span>
-      </button>
+        </button>
+      )}
 
       {open && (
         <div
@@ -159,6 +229,16 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
               </div>
               <p className="mt-1 text-muted">{t(lang, "uploadScreenshotHint")}</p>
 
+              {verifiedRoute?.isVerified && (
+                <div className="mt-2.5 rounded border border-emerald-500/20 bg-emerald-500/10 p-2 text-xs text-emerald-800 dark:text-emerald-300">
+                  <span className="font-semibold">{t(lang, "previouslyVerifiedRoute")}:</span>{" "}
+                  {verifiedRoute.verifiedDistanceKm} km
+                  <p className="text-[10px] text-muted mt-0.5">
+                    This route was previously verified and approved. If this specific trip took a different route, provide details below.
+                  </p>
+                </div>
+              )}
+
               <label className="mt-3 block font-medium" htmlFor={`correction-${journeyId}`}>
                 {t(lang, "howMuchGoogleMaps")}
               </label>
@@ -170,7 +250,7 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
                   type="number"
                   min="0.01"
                   step="0.01"
-                  placeholder="18.6"
+                  placeholder={verifiedRoute?.isVerified ? String(verifiedRoute.verifiedDistanceKm) : "18.6"}
                   value={value}
                   onChange={(event) => {
                     setValue(event.target.value);
@@ -182,6 +262,19 @@ export function DistanceCorrection({ journeyId, recordedKm, correction, lang = D
               <p className="mt-1 text-xs text-muted">
                 {t(lang, "recordedDistance")}: {recordedKm.toFixed(2)} km
               </p>
+
+              <label className="mt-2.5 block text-xs font-medium text-muted" htmlFor={`reason-${journeyId}`}>
+                {t(lang, "correctionReasonOptional")}
+              </label>
+              <input
+                id={`reason-${journeyId}`}
+                type="text"
+                className="input mt-1 w-full text-xs"
+                maxLength={200}
+                placeholder={t(lang, "correctionReasonPlaceholder")}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+              />
 
               <input
                 ref={input}

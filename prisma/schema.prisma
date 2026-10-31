@@ -263,6 +263,12 @@ model Journey {
   // original value remains in DistanceCorrection.originalDistanceKm for audit.
   distanceUpdated   Boolean   @default(false)
   distanceUpdatedAt DateTime?
+  // Snapshot of permanent verified-route memory at log time. Never overwrites
+  // distanceKm. MATCH = submitted km within configured tolerance; EXCEEDS =
+  // flagged for review. Null when no ACTIVE verified route existed.
+  verifiedDistanceKm     Float?
+  verifiedDiscrepancyKm  Float?
+  verifiedRouteMatch     String? // MATCH | EXCEEDS
   roadKm      Float? // road distance from provider
   haversineKm Float // straight-line fallback
   durationMin Int?
@@ -301,6 +307,7 @@ model Journey {
   // every preview and every logged visit — this makes it an index-only seek.
   @@index([employeeId, workDate, sequence])
   @@index([createdAt])
+  @@index([verifiedRouteMatch])
 }
 
 // Kept separate so the original Journey.distanceKm is permanent evidence.
@@ -322,6 +329,9 @@ model DistanceCorrection {
   usableGpsPoints     Int      @default(0)
   suspiciousActivity  Boolean  @default(false)
   reviewReason        String?
+  userReason          String?
+  /// Directional normalized key matching VerifiedRouteDistance.routeKey
+  routeKey            String?
   submittedAt         DateTime @default(now())
   reviewedAt          DateTime?
   reviewedById        String?
@@ -331,6 +341,54 @@ model DistanceCorrection {
 
   @@index([employeeId, status])
   @@index([status, submittedAt])
+  @@index([routeKey, status])
+}
+
+// Permanent verified route distance memory learned from approved corrections or admin overrides.
+model VerifiedRouteDistance {
+  id                 String               @id @default(cuid())
+  routeKey           String               @unique // Directional normalized key: "${fromNormalized}:::${toNormalized}"
+  fromNormalized     String
+  toNormalized       String
+  fromLocationName   String
+  toLocationName     String
+  fromSiteId         String?
+  toSiteId           String?
+  verifiedDistanceKm Float
+  approvalCount      Int                  @default(1)
+  source             String               @default("AUTO_VERIFIED") // AUTO_VERIFIED | MANUAL_ADMIN
+  status             String               @default("ACTIVE") // ACTIVE | DISABLED | ARCHIVED
+  notes              String?
+  lastVerifiedAt     DateTime             @default(now())
+  verifiedById       String?
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  history            VerifiedRouteAudit[]
+
+  @@index([fromNormalized, toNormalized])
+  @@index([status])
+  @@index([routeKey])
+  @@index([fromLocationName, toLocationName])
+}
+
+// Audit trail for permanent verified route distance modifications.
+model VerifiedRouteAudit {
+  id                      String                @id @default(cuid())
+  verifiedRouteDistanceId String
+  action                  String                // AUTO_THRESHOLD_MET | MANUAL_CREATE | MANUAL_UPDATE | STATUS_CHANGE
+  previousDistanceKm      Float?
+  newDistanceKm           Float
+  previousStatus          String?
+  newStatus               String
+  reason                  String?
+  performedById           String?
+  createdAt               DateTime              @default(now())
+
+  verifiedRoute           VerifiedRouteDistance @relation(fields: [verifiedRouteDistanceId], references: [id], onDelete: Cascade)
+
+  @@index([verifiedRouteDistanceId])
+  @@index([createdAt])
 }
 
 // Marks the point at which an employee manually restarted their day's journey

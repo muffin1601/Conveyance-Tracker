@@ -8,6 +8,8 @@ import { t } from "@/lib/i18n";
 import { todayKey, monthKey, inr, km, fmtTime } from "@/lib/utils";
 import { LOCATION_TYPE_LABEL, MISC_CATEGORY_LABEL, type LocationType, type MiscCategory } from "@/lib/enums";
 import { legFromName, legToName } from "@/lib/journeyEndpoint";
+import { buildRouteKey } from "@/lib/locationNormalizer";
+import { getVerifiedRouteConfig } from "@/lib/verifiedRoutes";
 import { isUploadConfigured } from "@/lib/storage";
 import { Card, SectionTitle, Empty, SummarySkeleton } from "@/components/ui";
 import { NavigateButton } from "@/components/NavigateButton";
@@ -85,7 +87,7 @@ async function TodaySummary() {
   if (!employeeId) return <Empty>{t(lang, "selectNameToSeeTrips")}</Empty>;
 
   const scope = { workDate, employeeId };
-  const [journeys, miscExpenses] = await Promise.all([
+  const [journeys, miscExpenses, verifiedRoutes, verifiedRouteConfig] = await Promise.all([
     prisma.journey.findMany({
       where: scope,
       orderBy: { sequence: "asc" },
@@ -104,7 +106,14 @@ async function TodaySummary() {
       where: scope,
       include: { employee: { select: { id: true, name: true } } },
     }),
+    prisma.verifiedRouteDistance.findMany({
+      where: { status: "ACTIVE" },
+      select: { routeKey: true, verifiedDistanceKm: true, approvalCount: true },
+    }),
+    getVerifiedRouteConfig(),
   ]);
+
+  const verifiedRouteMap = new Map(verifiedRoutes.map((v) => [v.routeKey, v]));
 
   if (journeys.length === 0 && miscExpenses.length === 0) {
     return <Empty>{t(lang, "noActivityToday")}</Empty>;
@@ -252,12 +261,33 @@ async function TodaySummary() {
                     />
                   </div>
                 )}
-                <DistanceCorrection
-                  journeyId={journey.id}
-                  recordedKm={journey.distanceKm}
-                  correction={journey.distanceCorrection}
-                  lang={lang}
-                />
+                {(() => {
+                  const from = legFromName(journey);
+                  const to = legToName(journey);
+                  const { routeKey } = buildRouteKey(from, to);
+                  const verifiedMatch = verifiedRouteMap.get(routeKey);
+                  return (
+                    <DistanceCorrection
+                      journeyId={journey.id}
+                      recordedKm={journey.distanceKm}
+                      correction={journey.distanceCorrection}
+                      lang={lang}
+                      fromName={from}
+                      toName={to}
+                      verifiedRoute={
+                        verifiedMatch
+                          ? {
+                              isVerified: true,
+                              verifiedDistanceKm: verifiedMatch.verifiedDistanceKm,
+                              approvalCount: verifiedMatch.approvalCount,
+                              toleranceKm: verifiedRouteConfig.toleranceKm,
+                              tolerancePercent: verifiedRouteConfig.tolerancePercent,
+                            }
+                          : null
+                      }
+                    />
+                  );
+                })()}
               </li>
             ))}
           </ol>

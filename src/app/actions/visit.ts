@@ -14,6 +14,7 @@ import { isSettingsUnlocked } from "./settings";
 import { purgeBillObject, auditBill } from "./bills";
 import { todayKey } from "@/lib/utils";
 import { TRAVEL_MODES, visitAmount, type TravelMode } from "@/lib/travel";
+import { compareSubmittedToVerifiedRoute } from "@/lib/verifiedRoutes";
 
 // A destination is one of three kinds:
 //  - SITE:   a master Site from the configured list        (locationType MASTER)
@@ -491,6 +492,19 @@ export interface VisitPreview {
   originMismatchM?: number | null;
   tripNumber: number;
   alreadyHere: boolean;
+  /**
+   * Previously verified permanent route distance memory, if this route has
+   * already been verified and meets the confidence threshold.
+   */
+  verifiedRoute?: {
+    isVerified: boolean;
+    verifiedDistanceKm: number;
+    approvalCount: number;
+    matchesWithinTolerance: boolean;
+    exceedsTolerance: boolean;
+    differenceKm: number;
+    toleranceKm: number;
+  } | null;
 }
 
 /**
@@ -525,6 +539,23 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
 
     const dist = await computeLeg(from, to, manualDistanceKm);
     const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
+
+    // Check whether a permanent verified distance exists for this route
+    let verifiedRouteInfo: VisitPreview["verifiedRoute"] = null;
+    const effectiveKm = typeof manualDistanceKm === "number" && manualDistanceKm > 0 ? manualDistanceKm : dist.distanceKm;
+    const verifiedLookup = await compareSubmittedToVerifiedRoute(from.name, to.name, effectiveKm);
+    if (verifiedLookup.isVerified && verifiedLookup.verifiedDistanceKm != null) {
+      verifiedRouteInfo = {
+        isVerified: true,
+        verifiedDistanceKm: verifiedLookup.verifiedDistanceKm,
+        approvalCount: verifiedLookup.approvalCount,
+        matchesWithinTolerance: verifiedLookup.matchesWithinTolerance,
+        exceedsTolerance: verifiedLookup.exceedsTolerance,
+        differenceKm: verifiedLookup.differenceKm,
+        toleranceKm: verifiedLookup.toleranceKm,
+      };
+    }
+
     return ok({
       fromName: from.name,
       toName: to.name,
@@ -538,6 +569,7 @@ export async function previewVisit(input: Input): Promise<ActionResult<VisitPrev
       originMismatchM: context.originMismatchM,
       tripNumber: sequence + 1,
       alreadyHere: false,
+      verifiedRoute: verifiedRouteInfo,
     });
   }, "previewVisit");
 }
@@ -732,6 +764,9 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
 
   const amount = legAmount(dist.distanceKm, mode, fareActual, settings.rates);
 
+  // Snapshot verified-route memory for review flags. Never overwrite distanceKm.
+  const verifiedComparison = await compareSubmittedToVerifiedRoute(from.name, to.name, dist.distanceKm);
+
   // Two tabs (or a tab and a retry) can reach this line concurrently with the
   // same key — the pre-flight lookup above cannot see a row that has not been
   // committed yet. The unique index is the real arbiter; a collision here
@@ -764,6 +799,9 @@ async function runSyncVisit(input: LogInput): Promise<SyncOutcome> {
         manualReason: dist.source === "MANUAL" ? (manualReason ?? null) : null,
         sequence,
         distanceKm: dist.distanceKm,
+        verifiedDistanceKm: verifiedComparison.verifiedDistanceKm,
+        verifiedDiscrepancyKm: verifiedComparison.isVerified ? verifiedComparison.differenceKm : null,
+        verifiedRouteMatch: verifiedComparison.verifiedRouteMatch,
         roadKm: dist.roadKm,
         haversineKm: dist.haversineKm,
         durationMin: dist.durationMin,

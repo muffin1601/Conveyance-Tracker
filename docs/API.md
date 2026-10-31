@@ -36,6 +36,20 @@ Errors thrown as `Error(message)`; surfaced verbatim in the UI
 | `upsertEmployee` | Admin+ |
 | `saveCompanySettings` | Super Admin |
 
+### Distance corrections & verified routes — `src/app/actions/distanceCorrections.ts`
+| Action | Auth | Effect |
+|--------|------|--------|
+| `submitDistanceCorrection` | Employee who owns the journey | Records the submitted distance, evidence, reason, and pending review status |
+| `reviewDistanceCorrection` | Admin PIN gate | Approves or rejects once; approval updates the journey and evaluates the approved-route threshold |
+| `checkRouteVerifiedDistanceAction` | Route lookup | Looks up active directional route memory; it never changes the submitted distance |
+| `manuallyVerifyRouteAction` / `updateVerifiedDistanceAction` | Admin PIN gate | Creates or updates route memory with a transactional audit record |
+| `setVerifiedRouteStatusAction` | Admin PIN gate | Activates, disables, or archives a route with an audit record |
+| `getRouteCorrectionHistoryAction` / `getCorrectionIntelligenceDataAction` | Admin PIN gate | Returns correction history, route metrics, and review flags |
+
+Only approved corrections count toward automatic verification. Route memory is
+not claim approval; journeys keep their submitted distance snapshot and claims
+continue through their existing approval workflow.
+
 ## HTTP routes
 
 | Method & path | Auth | Purpose |

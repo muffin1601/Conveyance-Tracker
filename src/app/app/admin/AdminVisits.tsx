@@ -27,6 +27,10 @@ interface Visit {
   distanceKm: number;
   /** True after an administrator-approved distance correction was applied. */
   distanceUpdated: boolean;
+  /** MATCH | EXCEEDS | null — snapshot vs verified route memory; never overwrites km. */
+  verifiedRouteMatch?: string | null;
+  verifiedDistanceKm?: number | null;
+  verifiedDiscrepancyKm?: number | null;
   amount: number;
   mode: string;
   /** How the distance was obtained — OSRM/CACHE/GOOGLE/HAVERSINE/MANUAL. */
@@ -271,6 +275,15 @@ export function AdminVisits({
                     {km(v.distanceKm)}
                     {v.distanceUpdated && (
                       <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>
+                    )}
+                    {v.verifiedRouteMatch === "EXCEEDS" && (
+                      <span className="block text-[11px] font-medium text-amber-700">
+                        vs verified {v.verifiedDistanceKm != null ? `${v.verifiedDistanceKm} km` : "route"}
+                        {v.verifiedDiscrepancyKm != null ? ` (Δ ${v.verifiedDiscrepancyKm} km)` : ""}
+                      </span>
+                    )}
+                    {v.verifiedRouteMatch === "MATCH" && (
+                      <span className="block text-[11px] font-medium text-emerald-700">Matches verified route</span>
                     )}
                     {/* Only the exceptions are called out. Marking every routed
                         row "Road distance" would be noise on a dense table;

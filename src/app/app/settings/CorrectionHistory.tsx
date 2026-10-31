@@ -12,8 +12,11 @@ export type CorrectionHistoryRow = {
   original: number;
   submitted: number;
   final: number | null;
+  differenceKm?: number | null;
+  userReason?: string | null;
   status: "APPROVED" | "REJECTED";
   reviewedAt: string | null;
+  reviewedById?: string | null;
   adminNote: string | null;
   screenshotName: string;
 };
@@ -74,10 +77,15 @@ export function CorrectionHistory({ rows }: { rows: CorrectionHistoryRow[] }) {
               <p className="mt-2">
                 Recorded: {row.original.toFixed(2)} km · Submitted: {row.submitted.toFixed(2)} km
                 {row.status === "APPROVED" && row.final != null ? ` · Approved: ${row.final.toFixed(2)} km` : ""}
+                {row.differenceKm != null ? ` · Diff: ${row.differenceKm.toFixed(2)} km` : ""}
               </p>
+              {row.userReason && (
+                <p className="mt-1 text-muted italic">Reason: &ldquo;{row.userReason}&rdquo;</p>
+              )}
               {row.reviewedAt && (
                 <p className="mt-1 text-muted">
                   Reviewed {new Intl.DateTimeFormat("en-IN", { dateStyle: "medium", timeStyle: "short" }).format(new Date(row.reviewedAt))}
+                  {row.reviewedById ? ` · by ${row.reviewedById.slice(0, 8)}…` : ""}
                 </p>
               )}
               {row.adminNote && <p className="mt-1">Note: {row.adminNote}</p>}

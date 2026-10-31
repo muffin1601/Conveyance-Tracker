@@ -79,6 +79,15 @@ interface Preview {
   /** Metres between this leg's stated origin and where the last trip actually ended. */
   originMismatchM?: number | null;
   tripNumber: number; alreadyHere: boolean;
+  verifiedRoute?: {
+    isVerified: boolean;
+    verifiedDistanceKm: number;
+    approvalCount: number;
+    matchesWithinTolerance: boolean;
+    exceedsTolerance: boolean;
+    differenceKm: number;
+    toleranceKm: number;
+  } | null;
 }
 
 export function CheckinForm({
@@ -978,6 +987,47 @@ export function CheckinForm({
                   {preview.durationMin && preview.source === "MANUAL" ? " · " : ""}
                   {preview.source === "MANUAL" ? t(lang, "manualEntry") : ""}
                 </p>
+              )}
+
+              {/* ── Verified Route Memory & Discrepancy Alert ── */}
+              {preview.verifiedRoute?.isVerified && (
+                <div
+                  className={cn(
+                    "mt-3 rounded-lg border p-2.5 text-xs transition",
+                    preview.verifiedRoute.matchesWithinTolerance
+                      ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-800 dark:text-emerald-300"
+                      : "border-amber-500/30 bg-amber-500/10 text-amber-800 dark:text-amber-300"
+                  )}
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 font-medium">
+                    <span className="flex items-center gap-1.5">
+                      <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />
+                      <strong>{t(lang, "previouslyVerifiedRoute")}</strong>
+                    </span>
+                    <span className="rounded bg-surface px-1.5 py-0.5 text-[11px] font-bold tabular-nums shadow-xs">
+                      {t(lang, "verifiedDistance")}: {preview.verifiedRoute.verifiedDistanceKm} km
+                    </span>
+                  </div>
+
+                  {preview.verifiedRoute.matchesWithinTolerance ? (
+                    <p className="mt-1.5 text-[11px] text-emerald-700 dark:text-emerald-400">
+                      ✓ {t(lang, "routeVerifiedMatches")} (±{preview.verifiedRoute.toleranceKm} km tolerance)
+                    </p>
+                  ) : (
+                    <div className="mt-1.5 space-y-1 text-[11px] text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold">
+                        ⚠ {t(lang, "distanceDiscrepancyWarning")}:
+                        <span className="ml-1 font-normal">
+                          Entered {preview.km.toFixed(1)} km vs verified {preview.verifiedRoute.verifiedDistanceKm} km
+                          (Difference: {preview.verifiedRoute.differenceKm} km).
+                        </span>
+                      </p>
+                      <p className="text-[10px] text-muted">
+                        Entry will be flagged for review. Your entered distance will not be overwritten.
+                      </p>
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           ) : manualPendingInput ? (
