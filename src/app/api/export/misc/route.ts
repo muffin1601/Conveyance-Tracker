@@ -50,18 +50,22 @@ export async function GET(req: NextRequest) {
 
   const items = await prisma.miscellaneousExpense.findMany({
     where: { workDate: { startsWith: period }, ...scope.where },
-    include: { employee: { select: { name: true, employeeCode: true, department: true } } },
+    include: {
+      employee: { select: { name: true, employeeCode: true, department: true } },
+      proofs: { select: { name: true }, orderBy: { uploadedAt: "asc" } },
+    },
     orderBy: [{ employeeId: "asc" }, { workDate: "asc" }, { createdAt: "asc" }],
   });
 
-  const header = ["Employee Code", "Employee", "Department", "Date", "Category", "Description", "Amount (INR)", "Notes", "Bill Available", "Bill File"];
+  const header = ["Employee Code", "Employee", "Department", "Date", "Category", "Description", "Amount (INR)", "Notes", "Proof Files", "Proof File Names"];
   const lines = [header.map(csvCell).join(",")];
   for (const e of items) {
     const cat = e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
+    const proofNames = [...(e.billName ? [e.billName] : []), ...e.proofs.map((proof) => proof.name)];
     lines.push([
       e.employee.employeeCode, e.employee.name, e.employee.department, e.workDate,
       cat, e.description ?? "", e.amount.toFixed(2), e.notes ?? "",
-      e.billPath ? "Yes" : "No", e.billName ?? "",
+      String(Number(!!e.billPath) + e.proofs.length), proofNames.join("; "),
     ].map(csvCell).join(","));
   }
 

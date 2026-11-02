@@ -12,6 +12,7 @@ export async function listMiscExpenses(employeeId: string, workDate?: string) {
   return prisma.miscellaneousExpense.findMany({
     where: { employeeId, ...(workDate ? { workDate } : {}) },
     orderBy: [{ workDate: "desc" }, { createdAt: "desc" }],
+    include: { proofs: { orderBy: { uploadedAt: "asc" } } },
   });
 }
 
@@ -34,6 +35,7 @@ const inputSchema = z.object({
   notes: z.string().trim().max(1000).optional(),
   workDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Enter a valid date."),
   bill: billSchema.optional(), // newly-uploaded bill metadata
+  proofs: z.array(billSchema).max(5).optional(),
   removeBill: z.boolean().optional(), // edit: clear the existing bill
 });
 
@@ -46,6 +48,20 @@ function validate(input: Input) {
   }
   return v;
 }
+
+async function validateUploadOwnership(employeeId: string, files: BillMeta[]) {
+  const employee = await prisma.employee.findUnique({
+    where: { id: employeeId },
+    select: { employeeCode: true },
+  });
+  if (!employee) throw new Error("Employee not found.");
+  const prefix = `${employee.employeeCode.replace(/[^A-Za-z0-9_-]/g, "")}/`;
+  if (files.some((file) => !file.path.startsWith(prefix))) {
+    throw new Error("One or more proof files do not belong to this employee.");
+  }
+}
+
+type BillMeta = z.infer<typeof billSchema>;
 
 function billFields(v: Input) {
   if (!v.bill) return {};
@@ -66,6 +82,11 @@ const CLEARED_BILL = {
 
 export async function addMiscExpense(input: Input) {
   const v = validate(input);
+  const proofs = v.proofs ?? [];
+  if (proofs.length + (v.bill ? 1 : 0) > 5) {
+    throw new Error("You can attach up to 5 proof files per expense.");
+  }
+  await validateUploadOwnership(v.employeeId, [...(v.bill ? [v.bill] : []), ...proofs]);
   const created = await prisma.miscellaneousExpense.create({
     data: {
       employeeId: v.employeeId,
@@ -76,10 +97,13 @@ export async function addMiscExpense(input: Input) {
       description: v.description || null,
       notes: v.notes || null,
       ...billFields(v),
+      proofs: {
+        create: proofs.map((proof) => ({ ...proof, uploadedBy: v.employeeId })),
+      },
     },
   });
-  if (v.bill) {
-    await auditBill({ employeeId: v.employeeId, action: "BILL_UPLOAD", entity: "MiscellaneousExpense", entityId: created.id, path: v.bill.path });
+  for (const proof of [...(v.bill ? [v.bill] : []), ...proofs]) {
+    await auditBill({ employeeId: v.employeeId, action: "BILL_UPLOAD", entity: "MiscellaneousExpense", entityId: created.id, path: proof.path });
   }
   revalidatePath("/app");
   revalidatePath("/app/admin");
@@ -88,10 +112,21 @@ export async function addMiscExpense(input: Input) {
 
 export async function updateMiscExpense(id: string, input: Input) {
   const v = validate(input);
-  const existing = await prisma.miscellaneousExpense.findUnique({ where: { id } });
+  const existing = await prisma.miscellaneousExpense.findUnique({
+    where: { id },
+    include: { proofs: true },
+  });
   if (!existing || existing.employeeId !== v.employeeId) {
     throw new Error("Expense not found.");
   }
+  const addedProofs = v.proofs ?? [];
+  const keepsExistingBill = !!existing.billPath && !v.removeBill && !v.bill;
+  const finalProofCount =
+    Number(!!v.bill || keepsExistingBill) + existing.proofs.length + addedProofs.length;
+  if (finalProofCount > 5) {
+    throw new Error("You can attach up to 5 proof files per expense.");
+  }
+  await validateUploadOwnership(v.employeeId, [...(v.bill ? [v.bill] : []), ...addedProofs]);
 
   // Resolve the bill mutation: replace, remove, or keep.
   let billData: Record<string, unknown> = {};
@@ -115,20 +150,30 @@ export async function updateMiscExpense(id: string, input: Input) {
       description: v.description || null,
       notes: v.notes || null,
       ...billData,
+      proofs: {
+        create: addedProofs.map((proof) => ({ ...proof, uploadedBy: v.employeeId })),
+      },
     },
   });
+  for (const proof of addedProofs) {
+    await auditBill({ employeeId: v.employeeId, action: "BILL_UPLOAD", entity: "MiscellaneousExpense", entityId: id, path: proof.path });
+  }
   revalidatePath("/app");
   revalidatePath("/app/admin");
   return { ok: true };
 }
 
 export async function deleteMiscExpense(id: string, employeeId: string) {
-  const existing = await prisma.miscellaneousExpense.findUnique({ where: { id } });
+  const existing = await prisma.miscellaneousExpense.findUnique({
+    where: { id },
+    include: { proofs: { select: { path: true } } },
+  });
   if (!existing || existing.employeeId !== employeeId) {
     throw new Error("Expense not found.");
   }
   await prisma.miscellaneousExpense.delete({ where: { id } });
   await purgeBillObject(existing.billPath); // prevent orphaned storage
+  await Promise.all(existing.proofs.map((proof) => purgeBillObject(proof.path)));
   revalidatePath("/app");
   revalidatePath("/app/admin");
   return { ok: true };
@@ -137,9 +182,13 @@ export async function deleteMiscExpense(id: string, employeeId: string) {
 /** Admin delete — not owner-restricted; gated by the admin PIN unlock. */
 export async function adminDeleteMiscExpense(id: string) {
   if (!(await isSettingsUnlocked())) throw new Error("Admin is locked.");
-  const existing = await prisma.miscellaneousExpense.findUnique({ where: { id } });
+  const existing = await prisma.miscellaneousExpense.findUnique({
+    where: { id },
+    include: { proofs: { select: { path: true } } },
+  });
   await prisma.miscellaneousExpense.delete({ where: { id } });
   await purgeBillObject(existing?.billPath);
+  await Promise.all((existing?.proofs ?? []).map((proof) => purgeBillObject(proof.path)));
   revalidatePath("/app");
   revalidatePath("/app/admin");
   return { ok: true };
@@ -152,6 +201,6 @@ export async function listMiscForPeriod(period: string) {
     where: { workDate: { startsWith: period } },
     orderBy: { createdAt: "desc" },
     take: 300,
-    include: { employee: { select: { name: true } } },
+    include: { employee: { select: { name: true } }, proofs: { orderBy: { uploadedAt: "asc" } } },
   });
 }

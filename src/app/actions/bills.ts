@@ -47,10 +47,12 @@ export async function requestBillUpload(input: {
  * Return a short-lived signed URL to view/download a bill. Used by both the
  * owning employee and admins (admins may view/download any bill).
  */
-export async function getBillUrl(entity: "misc" | "conveyance", id: string): Promise<string> {
+export async function getBillUrl(entity: "misc" | "misc-proof" | "conveyance", id: string): Promise<string> {
   const path =
     entity === "misc"
       ? (await prisma.miscellaneousExpense.findUnique({ where: { id }, select: { billPath: true } }))?.billPath
+      : entity === "misc-proof"
+        ? (await prisma.miscellaneousExpenseProof.findUnique({ where: { id }, select: { path: true } }))?.path
       : (await prisma.journey.findUnique({ where: { id }, select: { billPath: true } }))?.billPath;
   if (!path) throw new Error("No bill attached.");
   return createSignedDownloadUrl(path, 3600);
@@ -70,11 +72,12 @@ export async function discardBill(employeeId: string, path: string): Promise<{ o
   const prefix = employee.employeeCode.replace(/[^A-Za-z0-9_-]/g, "");
   if (!path.startsWith(`${prefix}/`)) throw new Error("Not permitted.");
   // Only discard if no saved row references this path (avoid nuking a live bill).
-  const [inMisc, inJourney] = await Promise.all([
+  const [inMisc, inMiscProof, inJourney] = await Promise.all([
     prisma.miscellaneousExpense.count({ where: { billPath: path } }),
+    prisma.miscellaneousExpenseProof.count({ where: { path } }),
     prisma.journey.count({ where: { billPath: path } }),
   ]);
-  if (inMisc === 0 && inJourney === 0) await deleteObject(path);
+  if (inMisc === 0 && inMiscProof === 0 && inJourney === 0) await deleteObject(path);
   return { ok: true };
 }
 

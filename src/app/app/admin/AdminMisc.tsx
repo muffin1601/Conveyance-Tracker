@@ -9,6 +9,12 @@ import { MISC_CATEGORY_LABEL, type MiscCategory } from "@/lib/enums";
 import { BillActions } from "@/components/BillActions";
 import { errorMessage } from "@/lib/errors";
 
+interface ProofFile {
+  id: string;
+  name: string;
+  type: string;
+}
+
 interface MiscRow {
   id: string;
   employee: string;
@@ -20,6 +26,7 @@ interface MiscRow {
   billPath: string | null;
   billName: string | null;
   billType: string | null;
+  proofs: ProofFile[];
 }
 
 function catLabel(m: MiscRow) {
@@ -80,9 +87,13 @@ export function AdminMisc({ items, total }: { items: MiscRow[]; total: number })
                   <td className="py-2 pr-3">{catLabel(m)}</td>
                   <td className="py-2 pr-3">{m.description || <span className="text-muted">—</span>}</td>
                   <td className="py-2 pr-3">
-                    {m.billPath
-                      ? <BillActions entity="misc" id={m.id} name={m.billName} type={m.billType} />
-                      : <span className="text-muted text-xs">No</span>}
+                    <div className="flex flex-col items-start gap-1">
+                      {m.billPath && <BillActions entity="misc" id={m.id} name={m.billName} type={m.billType} />}
+                      {m.proofs.map((proof) => (
+                        <BillActions key={proof.id} entity="misc-proof" id={proof.id} name={proof.name} type={proof.type} />
+                      ))}
+                      {!m.billPath && m.proofs.length === 0 && <span className="text-muted text-xs">No</span>}
+                    </div>
                   </td>
                   <td className="py-2 pr-3 text-right tabular-nums">{inr(m.amount)}</td>
                   <td className="py-2 text-right">

@@ -122,6 +122,10 @@ After pulling these changes, run `npm run db:push` (or `npx prisma db push`)
 to create the new `MiscellaneousExpense` / `UserCustomLocation` tables and the
 additive `Journey` columns — existing data is untouched.
 
+Miscellaneous expenses can include up to five proof files. Apply the additive
+`prisma/sql/20261102_add_misc_expense_proofs.sql` migration before deploying
+this feature.
+
 ---
 
 ## Scripts

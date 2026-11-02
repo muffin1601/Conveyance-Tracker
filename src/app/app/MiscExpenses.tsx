@@ -14,11 +14,17 @@ import { BillActions } from "@/components/BillActions";
 import { t, type Lang } from "@/lib/i18n";
 
 interface Employee { id: string; name: string; designation: string }
+interface ProofFile {
+  id: string; path: string; name: string; type: string; size: number;
+}
 interface Expense {
   id: string; workDate: string; category: string; customCategory: string | null;
   amount: number; description: string | null; notes: string | null;
   billPath: string | null; billName: string | null; billType: string | null;
+  proofs: ProofFile[];
 }
+
+const MAX_PROOF_FILES = 5;
 
 function catLabel(e: Expense) {
   return e.category === "OTHER" ? (e.customCategory || "Other") : MISC_CATEGORY_LABEL[e.category as MiscCategory] ?? e.category;
@@ -128,6 +134,12 @@ export function MiscExpenses({
                           <BillActions entity="misc" id={e.id} name={e.billName} type={e.billType} compact lang={lang} />
                         </span>
                       )}
+                      {e.proofs.map((proof) => (
+                        <span key={proof.id} className="inline-flex items-center gap-1">
+                          <Paperclip className="h-3 w-3 text-green-600" />
+                          <BillActions entity="misc-proof" id={proof.id} name={proof.name} type={proof.type} compact lang={lang} />
+                        </span>
+                      ))}
                     </div>
                     {e.description && <p className="text-muted truncate">{e.description}</p>}
                     {e.notes && <p className="text-xs text-muted truncate">{e.notes}</p>}
@@ -181,12 +193,20 @@ function ExpenseForm({
   const [description, setDescription] = useState(expense?.description ?? "");
   const [notes, setNotes] = useState(expense?.notes ?? "");
   const [bill, setBill] = useState<BillMetaValue | null>(null); // newly uploaded
+  const [proofUploads, setProofUploads] = useState<{ id: number; file: BillMetaValue | null }[]>([]);
+  const [nextProofId, setNextProofId] = useState(0);
   const [removeExisting, setRemoveExisting] = useState(false);
   const [replacing, setReplacing] = useState(false);
   const [error, setError] = useState("");
   const [pending, start] = useTransition();
 
   const hasExistingBill = !!expense?.billPath && !removeExisting;
+  const savedProofCount = (expense?.proofs.length ?? 0) + Number(hasExistingBill);
+  const newPrimaryProofCount = Number(!!bill && (!expense?.billPath || removeExisting));
+  const proofCount = savedProofCount + newPrimaryProofCount + proofUploads.length;
+  const canUploadPrimary = expense?.billPath
+    ? replacing || removeExisting
+    : proofCount < MAX_PROOF_FILES;
 
   function submit() {
     setError("");
@@ -196,6 +216,10 @@ function ExpenseForm({
     if (category === "OTHER" && !customCategory.trim()) { setError(t(lang, "enterCustomCategoryError")); return; }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(workDate)) { setError(t(lang, "chooseValidDate")); return; }
     if (workDate > todayKey()) { setError(t(lang, "dateNotFuture")); return; }
+    if (proofUploads.some((upload) => !upload.file)) {
+      setError(t(lang, "finishProofUpload"));
+      return;
+    }
 
     const payload = {
       employeeId,
@@ -206,6 +230,7 @@ function ExpenseForm({
       notes: notes || undefined,
       workDate,
       bill: bill ?? undefined,
+      proofs: proofUploads.flatMap((upload) => upload.file ? [upload.file] : []),
       removeBill: expense ? (removeExisting && !bill) : undefined,
     };
 
@@ -273,13 +298,52 @@ function ExpenseForm({
               <button type="button" onClick={() => { setRemoveExisting(true); setReplacing(false); }} className="text-xs text-red-600">{t(lang, "removeLabel")}</button>
             </span>
           </div>
-        ) : (
+        ) : canUploadPrimary ? (
           <>
             <BillUpload employeeId={employeeId} onChange={(m) => setBill(m)} lang={lang} />
             {(replacing || removeExisting) && expense?.billPath && (
               <button type="button" onClick={() => { setReplacing(false); setRemoveExisting(false); setBill(null); }} className="mt-1 text-xs text-muted">{t(lang, "keepExistingBill")}</button>
             )}
           </>
+        ) : null}
+        {uploadsEnabled && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-muted">{t(lang, "proofFilesLimit", { count: String(MAX_PROOF_FILES) })}</p>
+            {expense?.proofs.map((proof) => (
+              <div key={proof.id} className="flex items-center justify-between gap-2 rounded-md border p-2">
+                <span className="truncate text-sm">{proof.name}</span>
+                <BillActions entity="misc-proof" id={proof.id} name={proof.name} type={proof.type} compact lang={lang} />
+              </div>
+            ))}
+            {proofUploads.map((upload) => (
+              <BillUpload
+                key={upload.id}
+                employeeId={employeeId}
+                disabled={pending}
+                onChange={(file) => {
+                  if (file) {
+                    setProofUploads((current) => current.map((item) => item.id === upload.id ? { ...item, file } : item));
+                  } else {
+                    setProofUploads((current) => current.filter((item) => item.id !== upload.id));
+                  }
+                }}
+                lang={lang}
+              />
+            ))}
+            {proofCount < MAX_PROOF_FILES && (
+              <button
+                type="button"
+                disabled={pending}
+                onClick={() => {
+                  setProofUploads((current) => [...current, { id: nextProofId, file: null }]);
+                  setNextProofId((id) => id + 1);
+                }}
+                className="btn-ghost text-xs"
+              >
+                <Plus className="h-3.5 w-3.5" /> {t(lang, "addProofFile")}
+              </button>
+            )}
+          </div>
         )}
       </div>
 

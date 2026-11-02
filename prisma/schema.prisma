@@ -483,6 +483,7 @@ model MiscellaneousExpense {
   billUploadedBy String? // employeeId that uploaded
 
   employee Employee @relation(fields: [employeeId], references: [id])
+  proofs   MiscellaneousExpenseProof[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -491,6 +492,21 @@ model MiscellaneousExpense {
   @@index([workDate])
   @@index([category])
   @@index([createdAt])
+}
+
+model MiscellaneousExpenseProof {
+  id         String   @id @default(cuid())
+  expenseId  String
+  path       String   @unique
+  name       String
+  type       String
+  size       Int
+  uploadedAt DateTime @default(now())
+  uploadedBy String?
+
+  expense MiscellaneousExpense @relation(fields: [expenseId], references: [id], onDelete: Cascade)
+
+  @@index([expenseId, uploadedAt])
 }
 
 // ──────────────────────────────────────────────────────────────

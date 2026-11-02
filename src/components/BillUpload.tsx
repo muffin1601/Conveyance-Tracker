@@ -59,6 +59,17 @@ export function BillUpload({
     };
   }, [previewUrl]);
 
+  useEffect(() => {
+    return () => {
+      const path = uploadedPathRef.current;
+      if (path) {
+        void discardBill(employeeId, path).catch((e) => {
+          console.error("Could not clean up an unsaved bill upload:", e);
+        });
+      }
+    };
+  }, [employeeId]);
+
   function validate(f: File): string | null {
     if (f.size <= 0) return t(lang, "fileEmpty");
     if (f.size > MAX_MB * 1024 * 1024) return t(lang, "fileTooLarge", { mb: String(MAX_MB) });
@@ -100,7 +111,7 @@ export function BillUpload({
       setStatus("error");
       setError(errorMessage(e));
     }
-  }, [employeeId, onChange]);
+  }, [employeeId, lang, onChange]);
 
   async function pick(f: File) {
     const v = validate(f);

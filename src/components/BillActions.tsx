@@ -19,7 +19,7 @@ export function BillActions({
   compact,
   lang = DEFAULT_LANG,
 }: {
-  entity: "misc" | "conveyance";
+  entity: "misc" | "misc-proof" | "conveyance";
   id: string;
   name?: string | null;
   type?: string | null;

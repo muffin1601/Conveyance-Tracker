@@ -81,7 +81,10 @@ export default async function AdminPage({
         orderBy: { createdAt: "desc" },
         skip: (requestedPage - 1) * size,
         take: size,
-        include: { employee: { select: { name: true } } },
+        include: {
+          employee: { select: { name: true } },
+          proofs: { orderBy: { uploadedAt: "asc" } },
+        },
       }) : Promise.resolve([]),
       prisma.miscellaneousExpense.aggregate({
         where: periodFilter,
@@ -191,6 +194,7 @@ export default async function AdminPage({
           billPath: m.billPath,
           billName: m.billName,
           billType: m.billType,
+          proofs: m.proofs,
         }))}
         total={miscAmount}
       /><TablePagination total={miscTotalCount} page={requestedPage} size={size} /></>}

@@ -59,7 +59,11 @@ export async function GET(req: NextRequest) {
     }),
     prisma.miscellaneousExpense.findMany({
       where: { workDate: { startsWith: period }, ...scope.where },
-      select: { employeeId: true, workDate: true, amount: true, billPath: true, employee: { select: { name: true, employeeCode: true } } },
+      select: {
+        employeeId: true, workDate: true, amount: true, billPath: true,
+        _count: { select: { proofs: true } },
+        employee: { select: { name: true, employeeCode: true } },
+      },
     }),
   ]);
 
@@ -75,7 +79,7 @@ export async function GET(req: NextRequest) {
   for (const m of misc) {
     const k = key(m.employeeId, m.workDate);
     const r = rows.get(k) ?? { code: m.employee.employeeCode, name: m.employee.name, date: m.workDate, km: 0, conv: 0, misc: 0, bills: 0 };
-    r.misc += m.amount; if (m.billPath) r.bills += 1;
+    r.misc += m.amount; r.bills += Number(!!m.billPath) + m._count.proofs;
     rows.set(k, r);
   }
 
