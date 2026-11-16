@@ -65,7 +65,7 @@ export function isValidCoord(lat: number, lng: number): boolean {
 export const MIN_GEOFENCE_RADIUS_M = 50;
 export const MAX_GEOFENCE_RADIUS_M = 5000;
 /** Last-resort default, matching Site.geofenceRadius's schema default. */
-export const FALLBACK_GEOFENCE_RADIUS_M = 200;
+export const FALLBACK_GEOFENCE_RADIUS_M = 500;
 
 export function clampRadius(meters: number | null | undefined): number {
   if (typeof meters !== "number" || !Number.isFinite(meters)) {
@@ -93,7 +93,7 @@ export function resolveGeofenceRadius(
 /**
  * Worst device-reported accuracy still treated as a real fix. Beyond this the
  * reading is a coarse network/Wi-Fi estimate that can sit whole kilometres from
- * the phone, so "within 200 m of the site" would mean nothing.
+ * the phone, so a 500 m site range would mean nothing.
  */
 export const MAX_GPS_ACCURACY_M = 200;
 

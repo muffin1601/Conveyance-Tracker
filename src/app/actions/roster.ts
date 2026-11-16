@@ -214,7 +214,7 @@ const siteSchema = z.object({
   pincode: z.string().trim().max(12).optional().or(z.literal("")),
   latitude: z.number({ message: "Look up the address or enter a latitude." }),
   longitude: z.number({ message: "Look up the address or enter a longitude." }),
-  geofenceRadius: z.number().int().min(50).max(5000).default(200),
+  geofenceRadius: z.number().int().min(50).max(5000).default(500),
 });
 
 export type NewSite = z.infer<typeof siteSchema>;

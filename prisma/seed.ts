@@ -45,7 +45,7 @@ async function main() {
         companyName: "Watcon International",
         officeAddress: data.office.address,
         rates: { BIKE: 4, CAR: 11, CAB: 0, AUTO: 0, METRO: 0, BUS: 0, metroFlat: 60, busFlat: 30 },
-        geofenceRadius: 200,
+        geofenceRadius: 500,
         forgotPunchoutHours: 10,
       }),
     },
@@ -65,7 +65,7 @@ async function main() {
       zone: "HQ",
       latitude: data.office.lat,
       longitude: data.office.lng,
-      geofenceRadius: 200,
+      geofenceRadius: 500,
       isOffice: true,
     },
   });
@@ -85,7 +85,7 @@ async function main() {
         zone: s.city,
         latitude: s.lat,
         longitude: s.lng,
-        geofenceRadius: s.geofenceRadius,
+        geofenceRadius: s.geofenceRadius === 200 ? 500 : s.geofenceRadius,
       },
     });
   }

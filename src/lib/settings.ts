@@ -40,7 +40,7 @@ export const DEFAULT_SETTINGS: CompanySettings = {
   companyName: "Watcon International",
   officeAddress: "S-36, Okhla Phase II, Pocket S, Okhla Phase II, Okhla Industrial Estate, New Delhi, Delhi 110020",
   rates: DEFAULT_RATES,
-  geofenceRadius: 200,
+  geofenceRadius: 500,
   forgotPunchoutHours: 10,
   settingsPin: "1234",
 };

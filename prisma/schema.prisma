@@ -125,7 +125,7 @@ model Site {
   landmark        String?
   latitude        Float
   longitude       Float
-  geofenceRadius  Int     @default(200) // metres
+  geofenceRadius  Int     @default(500) // metres
   isOffice        Boolean @default(false) // the head office — the fallback origin for everyone
   // A site an employee may be assigned as their personal day-start (see
   // Employee.defaultOriginSiteId). isOffice implies this; kept separate so a

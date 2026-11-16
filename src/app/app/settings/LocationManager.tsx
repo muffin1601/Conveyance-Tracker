@@ -185,7 +185,7 @@ export function LocationManager({ sites }: { sites: SiteRow[] }) {
       pincode: manual ? "" : picked?.postalCode ?? "",
       latitude: coords!.latitude,
       longitude: coords!.longitude,
-      geofenceRadius: 200,
+      geofenceRadius: 500,
     };
 
     start(async () => {
