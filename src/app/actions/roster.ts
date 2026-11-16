@@ -8,6 +8,7 @@ import { attempt, ok, fail, type ActionResult } from "@/lib/result";
 import { forwardGeocode, isValidCoord } from "@/lib/geocode";
 import { MASTER_DATA_TAG } from "@/lib/masterData";
 import { VEHICLE_TYPES } from "@/lib/enums";
+import { invalidate } from "@/lib/cache";
 
 /**
  * Staff and site management for the Settings tab.
@@ -154,9 +155,7 @@ export async function setEmployeeStatus(id: string, active: boolean): Promise<Ac
 /**
  * Set (or clear) where an employee's day starts. Most staff should stay on
  * the default — the head office — so `siteId: null` clears any override.
- * A non-null id must point at a site that is actually eligible to be a
- * starting point (the head office, or one flagged `isStartingPoint`),
- * otherwise a typo'd id could silently anchor someone's whole day nowhere.
+ * A non-null id must point at an active master location.
  */
 export async function setEmployeeOrigin(employeeId: string, siteId: string | null): Promise<ActionResult> {
   return attempt(async () => {
@@ -169,15 +168,13 @@ export async function setEmployeeOrigin(employeeId: string, siteId: string | nul
     if (siteId) {
       const site = await prisma.site.findUnique({
         where: { id: siteId },
-        select: { status: true, isOffice: true, isStartingPoint: true, deletedAt: true },
+        select: { status: true, deletedAt: true },
       });
       if (!site || site.deletedAt || site.status !== "ACTIVE") return fail("That location no longer exists.");
-      if (!site.isOffice && !site.isStartingPoint) {
-        return fail("That location is not enabled as a starting point.");
-      }
     }
 
     await prisma.employee.update({ where: { id: employeeId }, data: { defaultOriginSiteId: siteId } });
+    invalidate(`origin:${employeeId}`);
     flushMasterData();
     return ok();
   }, "setEmployeeOrigin");
@@ -324,6 +321,7 @@ export async function updateSite(id: string, input: NewSite): Promise<ActionResu
       },
     });
 
+    invalidate("origin");
     flushMasterData();
     return ok();
   }, "updateSite");
@@ -340,6 +338,7 @@ export async function setSiteStatus(id: string, active: boolean): Promise<Action
     if (site.isOffice) return fail("The head office cannot be deactivated — every first trip starts there.");
 
     await prisma.site.update({ where: { id }, data: { status: active ? "ACTIVE" : "INACTIVE" } });
+    invalidate("origin");
     flushMasterData();
     return ok();
   }, "setSiteStatus");

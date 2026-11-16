@@ -277,7 +277,7 @@ export function AdminVisits({
                     {v.distanceUpdated && (
                       <span className="block text-[11px] font-medium text-emerald-600">Updated distance</span>
                     )}
-                    {v.submittedDistanceKm != null && (
+                    {v.submittedDistanceKm != null && !v.distanceUpdated && (
                       <span className="block text-[11px] font-medium text-emerald-700">
                         Auto-corrected from {km(v.submittedDistanceKm)} km using verified route
                       </span>

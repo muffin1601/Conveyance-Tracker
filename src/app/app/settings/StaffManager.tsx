@@ -18,7 +18,7 @@ export interface StaffRow {
   vehicleType: string;
   phone: string | null;
   status: string;
-  /** null = the default (head office). Otherwise the site this person's day starts from. */
+  /** null = the default (head office). Otherwise the master location this person's day starts from. */
   defaultOriginSiteId: string | null;
 }
 
@@ -42,7 +42,7 @@ export function StaffManager({
 }: {
   staff: StaffRow[];
   hints: RosterHints;
-  /** Sites eligible as a personal day-start — head office plus anything flagged as such. */
+  /** Active master locations available as a personal day-start. */
   startingPoints: StartingPointOption[];
 }) {
   const router = useRouter();
@@ -54,8 +54,6 @@ export function StaffManager({
   const [added, setAdded] = useState("");
   const [busyId, setBusyId] = useState<string | null>(null);
   const headOffice = startingPoints.find((s) => s.isOffice);
-  /** Only worth showing the picker once there is a real alternative to Head Office. */
-  const hasAlternativeOrigin = startingPoints.length > 1;
 
   // New-employee form
   const [name, setName] = useState("");
@@ -275,12 +273,12 @@ export function StaffManager({
                   </span>
                 </div>
 
-                {hasAlternativeOrigin && (
+                {startingPoints.length > 0 && (
                   <label className="mt-2 flex items-center gap-2 border-t pt-2 text-xs text-muted">
                     <MapPin className="h-3 w-3 shrink-0" /> Starts each day from
                     <select
                       className="input h-7 flex-1 py-0 text-xs"
-                      value={s.defaultOriginSiteId ?? ""}
+                      value={s.defaultOriginSiteId === headOffice?.id ? "" : s.defaultOriginSiteId ?? ""}
                       disabled={busyId === s.id}
                       onChange={(e) => changeOrigin(s, e.target.value)}
                     >

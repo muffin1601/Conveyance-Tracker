@@ -79,8 +79,7 @@ model Employee {
 
   // Where this person's first trip of the day starts, if not the head office.
   // Most staff leave this unset and start at Head Office (the Site flagged
-  // isOffice); a few work out of another starting-point-eligible Site (e.g.
-  // the showroom) and are pointed at it here instead. Set via Settings → Staff.
+  // isOffice); others can be assigned any active master Site via Settings → Staff.
   defaultOriginSiteId String?
   defaultOriginSite   Site?   @relation("DefaultOrigin", fields: [defaultOriginSiteId], references: [id])
 

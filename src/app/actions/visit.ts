@@ -226,10 +226,9 @@ async function resolveOffice(): Promise<Point> {
 
 /**
  * Where this employee's day starts. Most people start at the head office;
- * an employee can be assigned a different starting-point site instead (e.g.
- * staff working out of the showroom) via Settings → Staff. Falls back to the
- * head office if no override is set, the assigned site was deactivated, or it
- * lost its starting-point flag.
+ * an employee can be assigned any active master location via Settings → Staff.
+ * Falls back to the head office if no override is set or the assigned site
+ * was deactivated.
  */
 async function resolveDefaultOrigin(employeeId: string): Promise<Point> {
   return memo(`origin:${employeeId}`, 5 * 60_000, async () => {
@@ -245,7 +244,7 @@ async function resolveDefaultOrigin(employeeId: string): Promise<Point> {
       },
     });
     const site = emp?.defaultOriginSite;
-    if (site && site.status === "ACTIVE" && !site.deletedAt && (site.isStartingPoint || site.isOffice)) {
+    if (site && site.status === "ACTIVE" && !site.deletedAt) {
       return siteToPoint(site);
     }
     return resolveOffice();

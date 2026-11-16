@@ -82,14 +82,13 @@ export interface StartingPointOption {
 }
 
 /**
- * Sites an employee may be assigned as their personal day-start, for the
- * Settings → Staff picker. Head Office is always included (it is every
- * employee's default) alongside anything else flagged `isStartingPoint`.
+ * Every active master location can be assigned as a staff member's day-start.
+ * Head Office remains the default when no personal location is assigned.
  */
 export const getStartingPointSites = unstable_cache(
   async (): Promise<StartingPointOption[]> =>
     prisma.site.findMany({
-      where: { status: "ACTIVE", deletedAt: null, OR: [{ isOffice: true }, { isStartingPoint: true }] },
+      where: { status: "ACTIVE", deletedAt: null },
       orderBy: [{ isOffice: "desc" }, { name: "asc" }],
       select: { id: true, name: true, isOffice: true },
     }),
